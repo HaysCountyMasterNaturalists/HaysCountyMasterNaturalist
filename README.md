@@ -19,7 +19,7 @@ Run the flask app:
 ## To run flask app locally
 - Be sure you have MySQL installed and running.
 - Create an `hcmn` database.
-- Edit credentials in the `get_db` function as needed in flaskapp/VolunteerAT/db.py
+- Edit credentials in the `get_db` function as needed in flaskapp/flask_app/db.py
 - Create virtual env if desired.
 
 ```sh
@@ -35,11 +35,11 @@ export DEV=1
 ```
 
 ```sh
-flask --app VolunteerAT init-db
+flask --app flask_app init-db
 ```
 
 ```sh
-flask --app VolunteerAT run
+flask --app flask_app run
 ```
 
 ## To run flask app in production
@@ -50,7 +50,7 @@ First, build the vue app:
 npm run build
 ```
 
-Add generated .js and .css filenames to flaskapp/VolunteerAT/templates/opportunities/index.html
+Add generated .js and .css filenames to flaskapp/flask_app/templates/opportunities/index.html
 
 Be sure to set the following environment variables:
 - SECRET_KEY
