@@ -20,6 +20,7 @@ const err = ref(null)
 const success = ref(false)
 const copy = ref(false)
 const defaultEndTime = ref('')
+const notDeleted = ref(true)
 
 
 function handleResponse(response) {
@@ -58,6 +59,16 @@ function updateEndTime(newStartTime, oldValue, el$) {
         eventEnd.clear()
         eventEnd.update()
     }
+  }
+}
+
+async function deleteOpp() {
+  notDeleted.value = false
+  const res = await axios.post(DOMAIN.concat(`/api/delete/${props.id}`))
+  const data = await res.data
+  if (data.success) {
+    success.value = true
+    setTimeout(() => router.push('/'), 2000)
   }
 }
 
@@ -165,12 +176,18 @@ fetchUser()
        <div class="error" v-if="err">{{ err }}</div>
        <div class="success" v-if="success">Success!</div>
        <div v-if="props.id" class="copy">
-         <button class="vf-btn vf-btn-primary" v-if="copy" disabled=true>
+         <button class="vf-btn vf-btn-primary spaced-out" v-if="copy" disabled=true>
            Copied
          </button>
-         <button  class="vf-btn vf-btn-primary" v-else @click="duplicate">
-           Copy Opportunity
-         </button>
+         <div v-else-if="notDeleted">
+           <button class="vf-btn vf-btn-primary spaced-out" @click="duplicate">
+             Copy
+           </button>
+           <span> </span>
+           <button  class="vf-btn vf-btn-primary" @click.prevent="deleteOpp">
+             Delete
+           </button>
+         </div>
        </div>
       <FormElements>
 
@@ -569,7 +586,7 @@ fetchUser()
          />
 
      </FormElements>
-     <FormStepsControls />
+     <FormStepsControls v-if="notDeleted"/>
      <div class="help">
        <a href="https://docs.google.com/document/d/1zqQsXDq8cU7HPE-stWppD7BPM8NVLXM18IK7-XABtmE/edit?usp=sharing">Help</a> | 
        <RouterLink to="/">Exit</RouterLink>
@@ -597,5 +614,8 @@ fetchUser()
   .help {
     text-align: right;
     padding: 10px 0;
+  }
+  .spaced-out {
+    margin: 5px;
   }
  </style>

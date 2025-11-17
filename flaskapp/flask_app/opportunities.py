@@ -247,6 +247,30 @@ def create():
     return { 'success': True }
 
 
+@bp.route('/api/delete/<int:id>', methods=['POST'])
+@editor_required
+def delete(id):
+    try:
+        with get_db() as cursor:
+            cursor.execute(
+                """SELECT owner
+                    FROM opportunities
+                    WHERE id = %(id)s""",
+                { 'id': id }
+            )
+            owner = cursor.fetchone()[0]
+            if not g.user['admin'] and g.user['id'] != owner:
+                return { 'error': 'User does not have permission' }, 400
+            cursor.execute(
+                """DELETE from opportunities
+                    WHERE id = %(id)s""",
+                { 'id': id }
+            )
+    except Exception as e:
+        return { 'error': str(e) }, 400
+
+    return { 'success': True }
+
 @bp.route('/api/update/<int:id>', methods=['POST'])
 @editor_required
 def update(id):
