@@ -184,7 +184,7 @@ fetchUser()
              Copy
            </button>
            <span> </span>
-           <button  class="vf-btn vf-btn-primary" @click.prevent="deleteOpp">
+           <button  class="vf-btn vf-btn-danger" @click.prevent="deleteOpp">
              Delete
            </button>
          </div>
