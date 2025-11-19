@@ -115,6 +115,51 @@ def logout():
     return { 'success': True }
 
 
+@bp.route('/reset-password/<key>', methods=['POST'])
+def reset_password(key):
+    email = key # change this!!
+    password = request.form['password']
+
+    error = None
+
+    if not email:
+        error = 'Email is required.'
+    elif not password:
+        error = 'Password is required.'
+
+    # hash and salt new password.
+    hashed_password = bcrypt.hashpw(
+        password.encode('utf-8'),
+        bcrypt.gensalt()
+    )
+
+    success = False
+
+    if error is None:
+        try:
+            with get_db() as cursor:
+                cursor.execute(
+                    """UPDATE master_naturalist
+                        SET
+                            password = %(hashed_password)s
+                        WHERE email = %(email)s""",
+                    {
+                        'email': email,
+                        'hashed_password': hashed_password
+                    }
+                )
+        except:
+            error = f"Oops! Something went wrong. Please try again."
+        else:
+            user = get_user_by_email(email)
+            if user:
+                success = True
+                return signin(user[0])
+            else:
+                error = f"Oops! Check your link and try again."
+    return { 'success': success, 'error': error }
+
+
 def admin_required(view):
     '''Requires user be an admin in order to access the
     decorated endpoint.'''
