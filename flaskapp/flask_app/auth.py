@@ -1,4 +1,6 @@
 import functools
+from itsdangerous.url_safe import URLSafeTimedSerializer
+import os
 
 import bcrypt
 from flask import (
@@ -115,48 +117,62 @@ def logout():
     return { 'success': True }
 
 
-@bp.route('/reset-password/<key>', methods=['POST'])
-def reset_password(key):
-    email = key # change this!!
-    password = request.form['password']
-
+@bp.route('/reset-password/<token>/<int:id>', methods=['POST'])
+def reset_password(token, id):
+    new_password = request.form['password']
     error = None
-
-    if not email:
-        error = 'Email is required.'
-    elif not password:
+    success = False
+    email = None
+    if g.user:
+        error = 'Already logged in.'
+    elif not new_password:
         error = 'Password is required.'
 
-    # hash and salt new password.
-    hashed_password = bcrypt.hashpw(
-        password.encode('utf-8'),
-        bcrypt.gensalt()
-    )
+    with get_db() as cursor:
+        cursor.execute(
+            """SELECT email, password FROM master_naturalist WHERE id = %(id)s""",
+            {'id': id}
+        )
+        email, previous_hashed_password = cursor.fetchone()
 
-    success = False
+
+    serializer = URLSafeTimedSerializer(os.environ.get('SECRET_KEY'))
+    try:
+        token_user_email = serializer.loads(
+            token,
+            max_age=259200, # 3 days in seconds
+            salt=previous_hashed_password,
+        )
+    except:
+        error = f"Oops! Something went wrong. Please contact an admin."
+    
+    if error is None and token_user_email != email:
+        error = f"Oops! Something went wrong. Please contact an admin."
 
     if error is None:
+        # hash and salt new password.
+        new_hashed_password = bcrypt.hashpw(
+            new_password.encode('utf-8'),
+            bcrypt.gensalt()
+        )
         try:
             with get_db() as cursor:
                 cursor.execute(
                     """UPDATE master_naturalist
                         SET
-                            password = %(hashed_password)s
-                        WHERE email = %(email)s""",
+                            password = %(new_hashed_password)s
+                        WHERE id = %(id)s""",
                     {
-                        'email': email,
-                        'hashed_password': hashed_password
+                        'id': id,
+                        'new_hashed_password': new_hashed_password
                     }
                 )
         except:
-            error = f"Oops! Something went wrong. Please try again."
+            error = f"Oops! Something went wrong. Please try another password."
         else:
-            user = get_user_by_email(email)
-            if user:
-                success = True
-                return signin(user[0])
-            else:
-                error = f"Oops! Check your link and try again."
+            success = True
+            return signin(id)
+
     return { 'success': success, 'error': error }
 
 
@@ -190,57 +206,19 @@ def editor_required(view):
     return wrapped_view
 
 
-@bp.route('/users')
+@bp.route('/users/reset-password/<int:id>', methods=['GET'])
 @admin_required
-def users():
-    users = []
+def generate_password_link(id):
+    secret_key = None
     with get_db() as cursor:
         cursor.execute(
-            """SELECT
-                    id,
-                    email,
-                    admin,
-                    project_coordinator
-                FROM master_naturalist"""
+            """SELECT email, password FROM master_naturalist WHERE id = %(id)s""",
+            {'id': id }
         )
-        db_users = cursor.fetchall()
-    for user in db_users:
-        users.append({
-            'id': user[0],
-            'email': user[1],
-            'admin': user[2] == 1,
-            'project_coordinator': user[3] == 1,
-        })
+        email, hashed_password = cursor.fetchone()
 
-    return users
+        serializer = URLSafeTimedSerializer(os.environ.get('SECRET_KEY'))
 
-@bp.route('/users/update/<int:id>', methods=['POST'])
-@admin_required
-def update_user(id):
-    with get_db() as cursor:
-        # cannot edit another admin's status
-        cursor.execute(
-            """SELECT admin
-                FROM master_naturalist
-                WHERE id = %(id)s""",
-            { 'id': id }
-        )
-        is_admin = cursor.fetchone()[0]
-        if is_admin == 1:
-            return {'error': 'access denied'}, 400
+    secret_key = serializer.dumps(email, salt=hashed_password)
 
-        # update desired user
-        cursor.execute(
-            """UPDATE master_naturalist
-                SET
-                    project_coordinator = %(project_coordinator)s,
-                    admin = %(admin)s
-                WHERE id = %(id)s""",
-            {
-                'id': id,
-                'project_coordinator': 1 if request.form.get('project_coordinator') == 'true' else 0,
-                'admin': 1 if request.form.get('admin') == 'true' else 0,
-            }
-        )
-
-    return { 'success': True }
+    return { 'secret_key': secret_key }

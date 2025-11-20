@@ -6,7 +6,7 @@ import vue from '@vitejs/plugin-vue'
 // https://vitejs.dev/config/
 export default defineConfig({
   build: {
-    outDir: '../flaskapp/VolunteerAT/static/dist'
+    outDir: '../flaskapp/flask_app/static/dist'
   },
   plugins: [
     vue(),

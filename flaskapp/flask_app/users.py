@@ -24,8 +24,6 @@ def list():
 @admin_required
 def update(id):
     data = request.get_json()
-    print(data.get('admin'))
-    print(data.get('project_coordinator'))
     try:
         with get_db() as cursor:
             cursor.execute(

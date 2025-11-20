@@ -5,11 +5,12 @@ import { DOMAIN } from '../utils.js'
 
 
 const props = defineProps({
-  id: String
+  id: String,
+  token: String,
 })
 
 const router = useRouter()
-const endpoint = ref(`${DOMAIN}/auth/reset-password/${props.id}`)
+const endpoint = ref(`${DOMAIN}/auth/reset-password/${props.token}/${props.id}`)
 const err = ref()
 
 function handleResponse(response) {

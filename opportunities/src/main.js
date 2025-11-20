@@ -27,7 +27,7 @@ const routes = [
   { path: '/', component: Opportunities },
   { path: '/signup', component: Auth, props: { endpoint: 'signup', title: 'Sign Up' } },
   { path: '/login', component: Auth, props: { endpoint: 'login', title: 'Log In' } },
-  { path: '/reset-password/:id', component: ResetPassword, props: true },
+  { path: '/reset-password/:token?/:id(\\d+)', component: ResetPassword, props: true },
   { path: '/new', component: OpportunityForm, props: {id: ''} },
   { path: '/:id', component: OpportunityForm, props: true },
   { path: '/users', component: Users },
