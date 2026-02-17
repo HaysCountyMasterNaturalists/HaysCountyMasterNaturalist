@@ -496,6 +496,7 @@ fetchUser()
   border: 1px solid #d4b106;
   border-radius: 8px;
   background: #fffbe6;
+  color: #594d00;
 }
 
 .update-banner__content {
@@ -520,7 +521,11 @@ fetchUser()
 .user { text-align: right; }
 .filters { line-height: 1.5; margin-right: 10px; }
 .filter { margin: 20px; }
-.day-header { padding: 5px; }
+.day-header { padding: 5px; color: #2c3e50; }
+
+@media (prefers-color-scheme: dark) {
+  .day-header { color: #ffffff; }
+}
 
 .week-header {
   display: flex;
@@ -543,6 +548,7 @@ fetchUser()
   display: flex;
   gap: 8px;
   align-items: center;
+  color: #555;
 }
 
 .opp-placeholder .icon {
