@@ -11,7 +11,7 @@
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@vueform/vueform": "^1.9.2",
+    "@vueform/vueform": "^1.13.7",
     "moment": "^2.30.1",
     "vue": "^3.3.11",
     "vue-final-modal": "^4.5.5",
