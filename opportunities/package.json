@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
   },
   "dependencies": {
     "@vueform/vueform": "^1.9.2",
@@ -16,6 +18,8 @@
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.8.4",
+    "@playwright/test": "^1.41.0",
     "@vitejs/plugin-vue": "^4.5.2",
     "vite": "^5.0.10"
   }

@@ -1,0 +1,67 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - test
+
+jobs:
+  deploy:
+    name: ${{ github.ref_name == 'main' && 'Deploy → prod' || 'Deploy → test' }}
+    runs-on: ubuntu-latest
+
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: opportunities/package-lock.json
+
+      - name: Build Vue frontend
+        run: |
+          cd opportunities
+          npm ci
+          npm run build
+
+      - name: Set deployment variables
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "REMOTE_DIR=/opt/cal-prod" >> $GITHUB_ENV
+            echo "SERVICE=cal-prod" >> $GITHUB_ENV
+          else
+            echo "REMOTE_DIR=/opt/cal-test" >> $GITHUB_ENV
+            echo "SERVICE=cal-test" >> $GITHUB_ENV
+          fi
+
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Sync code
+        run: |
+          rsync -az \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' \
+            flaskapp/ root@${{ secrets.SERVER_HOST }}:${{ env.REMOTE_DIR }}/
+
+          # wsgi entry point
+          echo "from flask_app import app" | \
+            ssh -i ~/.ssh/deploy_key root@${{ secrets.SERVER_HOST }} \
+            "cat > ${{ env.REMOTE_DIR }}/wsgi.py"
+
+      - name: Restart service
+        run: |
+          ssh -i ~/.ssh/deploy_key root@${{ secrets.SERVER_HOST }} \
+            "chown -R ${{ env.SERVICE }}:${{ env.SERVICE }} ${{ env.REMOTE_DIR }} && \
+             systemctl restart ${{ env.SERVICE }} && \
+             systemctl status ${{ env.SERVICE }} --no-pager"

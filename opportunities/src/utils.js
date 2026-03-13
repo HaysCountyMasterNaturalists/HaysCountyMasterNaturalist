@@ -62,7 +62,7 @@ export function formatDateDisplay(opp) {
 function formatModalDateTime(unformattedDt) {
   const dt = moment(unformattedDt)
   return dt.format('LT') === '12:00 AM' ?
-    dt.format("dddd, MMMM Do") : dt.format("dddd, MMMM Do, h:mm:ss a")
+    dt.format("dddd, MMMM Do") : dt.format("dddd, MMMM Do, h:mm a")
 }
 
 export function formatModalDateDisplay(opp) {

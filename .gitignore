@@ -8,6 +8,7 @@ opportunities/.vscode/**/*
 opportunities/dist/**/*
 opportunities/node_modules/**/*
 opportunities/public/**/*
+tmp/
 
 # Logs
 logs
