@@ -33,6 +33,15 @@ jobs:
           npm ci
           npm run build
 
+      - name: Update asset filenames in Flask template
+        run: |
+          JS_FILE=$(basename flaskapp/flask_app/static/dist/assets/index-*.js)
+          CSS_FILE=$(basename flaskapp/flask_app/static/dist/assets/index-*.css)
+          sed -i "s|dist/assets/index-[^'\"]*\.js|dist/assets/${JS_FILE}|g" \
+            flaskapp/flask_app/templates/opportunities/index.html
+          sed -i "s|dist/assets/index-[^'\"]*\.css|dist/assets/${CSS_FILE}|g" \
+            flaskapp/flask_app/templates/opportunities/index.html
+
       - name: Set deployment variables
         run: |
           if [[ "${{ github.ref_name }}" == "main" ]]; then
