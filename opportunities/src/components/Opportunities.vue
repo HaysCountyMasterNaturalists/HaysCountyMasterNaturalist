@@ -12,7 +12,7 @@ import { getCategory, DOMAIN } from '../utils.js'
 // UI-controlled toggle for week start behavior
 // true  -> weeks start on Sunday (today if Sunday, otherwise previous Sunday)
 // false -> original behavior (today-based)
-const startWeekOnSunday = ref(true)
+const startWeekOnSunday = ref(false)
 
 const ANY_TIME = 'Any Time'
 
@@ -103,7 +103,7 @@ function hydrateFiltersFromQuery(q) {
     showExpired.value = String(q.expired) === '1' || String(q.expired).toLowerCase() === 'true'
   }
 
-  // sunday: 1/0 (default is true)
+  // sunday: 1/0 (default is false)
   if (q.sunday !== undefined) {
     startWeekOnSunday.value = String(q.sunday) === '1' || String(q.sunday).toLowerCase() === 'true'
   }
@@ -136,8 +136,8 @@ function buildQueryFromFilters() {
   if (searchTitleAndBody.value) query.q = searchTitleAndBody.value
   if (showExpired.value) query.expired = '1'
 
-  // default is true; include only when false so links can explicitly disable it
-  if (!startWeekOnSunday.value) query.sunday = '0'
+  // Always include the sunday parameter to avoid confusion
+  query.sunday = startWeekOnSunday.value ? '1' : '0'
 
   if (selectedCategories.value.size) query.categories = Array.from(selectedCategories.value).join(',')
   if (selectedCities.value.size) query.cities = Array.from(selectedCities.value).join(',')
@@ -449,18 +449,17 @@ fetchUser()
         class="day"
         v-for="day in (showExpired ? days : displayDays)"
         :key="day"
-        :class="{ 'any-time-day': day === ANY_TIME }"
+        :class="{ 'any-time-day': day === ANY_TIME && startWeekOnSunday }"
       >
         <div class="day-header">{{ day }}</div>
 
-        <!-- When showExpired is ON, never show the Past Opportunities placeholder -->
         <div v-if="!showExpired && isPastDay(day)" class="opp-placeholder opp opportunity past">
           <span class="icon">⏱</span>
           <span>Expired</span>
         </div>
 
         <template v-if="(filteredOpportunities[day] || []).length">
-          <div :class="{ 'any-time-opps': day === ANY_TIME }">
+          <div :class="{ 'any-time-opps': day === ANY_TIME && startWeekOnSunday }">
             <Day
               :admin="user.admin"
               :userId="user.id"
@@ -470,7 +469,6 @@ fetchUser()
           </div>
         </template>
 
-        <!-- No Matches only when the Day has zero opportunities AND we're not showing Past Opportunities -->
         <div v-else-if="!((!showExpired) && isPastDay(day))" class="opp-placeholder opp opportunity no-matches">
           <span class="icon">⛔</span>
           <span>None</span>
