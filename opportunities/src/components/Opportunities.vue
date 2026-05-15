@@ -47,8 +47,8 @@ const isHydratingFilters = ref(true)
 
 // App update banner (manual version/date + description)
 // Bump APP_UPDATE_DATE (YYYY-MM-DD) and APP_UPDATE_DESC whenever you ship a notable UI/app change.
-const APP_UPDATE_DATE = '2026-02-07'
-const APP_UPDATE_DESC = 'Filters now persist across refresh and can be shared via the URL query string.'
+const APP_UPDATE_DATE = '2026-05-14'
+const APP_UPDATE_DESC = 'Try the new "Start week on Sunday" feature!'
 const UPDATE_COOKIE_KEY = 'opportunities_last_seen_update'
 const showUpdateBanner = ref(false)
 
