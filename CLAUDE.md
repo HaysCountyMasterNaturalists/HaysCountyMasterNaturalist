@@ -24,7 +24,7 @@ This is a two-tier app for the Hays County Master Naturalist chapter: a Vue 3 SP
 
 ## Development
 
-Node version is pinned to 22 via `.nvmrc`. Python deps are in `flaskapp/requirements.txt`.
+Node version is pinned to 22 via `.nvmrc`. If you use nvm, run `nvm use` (no args) in the repo root — it reads `.nvmrc` and switches automatically. On older Node (e.g. 16), `vite build` crashes with `crypto.getRandomValues is not a function`. Python deps are in `flaskapp/requirements.txt`.
 
 **Frontend dev (Vite, hot reload):**
 ```sh
