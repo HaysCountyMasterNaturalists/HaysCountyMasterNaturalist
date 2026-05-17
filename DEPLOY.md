@@ -1,8 +1,10 @@
-# Deploying to PythonAnywhere
+# Deploying to PythonAnywhere (legacy environment)
 
-This runbook covers manual deploys of the HCMN app to PythonAnywhere. It was reconstructed and verified end-to-end on 2026-05-17 after the previous (manual-deploy) maintainer left.
+> **Status: legacy.** PythonAnywhere is where the app currently serves production traffic, but the intended future deploy path is the automated GitHub Actions workflow at `.github/workflows/deploy.yml` (pushes to `main` → `/opt/cal-prod`, pushes to `test` → `/opt/cal-test`, both via systemd on a self-hosted server). The GH Actions workflow does **not** deploy to PythonAnywhere — the two paths are independent.
+>
+> This document exists so that maintenance of the legacy PA deployment remains possible during the interim, and so the procedure isn't lost the next time it's needed.
 
-The unrelated GitHub Actions workflow at `.github/workflows/deploy.yml` targets a different self-hosted systemd setup (`/opt/cal-test`, `/opt/cal-prod`); it does **not** deploy to PythonAnywhere.
+This runbook was reconstructed and verified end-to-end on 2026-05-17 after the previous (manual-deploy) maintainer left.
 
 ## Production environment
 
