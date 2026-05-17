@@ -1,9 +1,14 @@
 import os
 
+from dotenv import load_dotenv
 from flask import Flask
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from . import auth, db, opportunities, users
 
+
+# PythonAnywhere's WSGI process doesn't source a shell; without this, the
+# .env one level above the package would be silently ignored in prod.
+load_dotenv(os.path.join(os.path.dirname(__file__), os.pardir, '.env'))
 
 app = Flask(__name__, instance_relative_config=True)
 
