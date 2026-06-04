@@ -47,6 +47,7 @@ def get_opportunities():
                     project_id,
                     recurring_weekly,
                     recurring_monthly,
+                    recurring_days,
                     link,
                     just_show_up
                 FROM opportunities
@@ -74,8 +75,9 @@ def get_opportunities():
             'project_id': opp[12],
             'recurring_weekly': opp[13] == 1,
             'recurring_monthly': opp[14],
-            'link': opp[15],
-            'just_show_up': opp[16] == 1
+            'recurring_days': opp[15],
+            'link': opp[16],
+            'just_show_up': opp[17] == 1
         })
 
     return opportunities
@@ -111,26 +113,38 @@ def find_recurring(opportunities):
         occurences of recurring events from 45 days back to 3 months in the
         future.
     '''
-    # TODO refactor maybe at some point.
     all_opportunities = []
     now = datetime.now(tz=utc)
     six_months_out = now + relativedelta(months=6)
     fortyfive_days_ago = now - timedelta(days=45)
+
     for opp in opportunities:
-        expiration_date = None
-        if opp['expiration_date']:
-            expiration_date = opp['expiration_date']
+        expiration_date = opp.get('expiration_date')
+
         if opp['recurring_weekly']:
-            # adds opp every 7 days for 3 months out (accounting for expiration_date).
+            # Fallback logic: Use string from DB or calculate from event_start
+            if opp.get('recurring_days'):
+                allowed_days = [int(d) for d in opp['recurring_days'].split(',')]
+            else:
+                # Localize and get weekday (Python 0=Mon, so convert to Moment 0=Sun)
+                localized_start = opp['event_start'].astimezone(central)
+                allowed_days = [(localized_start.weekday() + 1) % 7]
+
             day = opp['event_start']
             original_hour = day.astimezone(central).hour
-            while day < fortyfive_days_ago:
-                day += timedelta(days=7)
-            while day <= six_months_out and (not expiration_date or day <= expiration_date):
-                new_opp = opp.copy()
-                convert_to_local_time(new_opp, day, original_hour)
-                all_opportunities.append(new_opp)
-                day += timedelta(days=7)
+            current_day = max(day, fortyfive_days_ago)
+
+            while current_day <= six_months_out and (not expiration_date or current_day <= expiration_date):
+                # Calculate current day's Moment-style weekday index
+                moment_weekday = (current_day.astimezone(central).weekday() + 1) % 7
+
+                if moment_weekday in allowed_days:
+                    new_opp = opp.copy()
+                    convert_to_local_time(new_opp, current_day, original_hour)
+                    all_opportunities.append(new_opp)
+
+                current_day += timedelta(days=1)  # Check every day
+
         elif opp['recurring_monthly']:
             # adds opp every month for 3 months out (accounting for expiration_date).
             day = opp['event_start']
@@ -159,6 +173,24 @@ def clean_city(city):
     else:
         return None
 
+
+def clean_recurring_days(form):
+    '''Normalizes recurring_days form input to a comma-separated string of
+    Moment-style weekday indices (0=Sun..6=Sat), or None when empty.
+
+    Accepts repeated keys (Vueform's typical array serialization), bracketed
+    keys, or a single comma-joined value.'''
+    raw = form.getlist('recurring_days') or form.getlist('recurring_days[]')
+    days = []
+    for entry in raw:
+        if entry is None:
+            continue
+        for d in str(entry).split(','):
+            d = d.strip()
+            if d:
+                days.append(d)
+    return ','.join(days) if days else None
+
 def clean_date(dt):
     '''Deals with am/pm input and converts to utc datetime object'''
     if dt:
@@ -183,7 +215,7 @@ def get_opportunity(id):
                         event_end,
                         expiration_date,
                         category, project_id, recurring_weekly,
-                        recurring_monthly, link, just_show_up
+                        recurring_monthly, recurring_days, link, just_show_up
                 FROM opportunities
                 WHERE id = %(id)s""",
             {'id': id}
@@ -215,14 +247,14 @@ def create():
                 """INSERT INTO opportunities (owner, title, body, anywhere,
                             anytime, location, city, event_start, event_end,
                             expiration_date, category, project_id,
-                            recurring_weekly, recurring_monthly, link,
-                            just_show_up)
+                            recurring_weekly, recurring_monthly,
+                            recurring_days, link, just_show_up)
                     VALUES (%(owner)s, %(title)s, %(body)s, %(anywhere)s,
                             %(anytime)s, %(location)s, %(city)s,
                             %(event_start)s, %(event_end)s, %(expiration_date)s,
                             %(category)s, %(project_id)s,
                             %(recurring_weekly)s, %(recurring_monthly)s,
-                            %(link)s, %(just_show_up)s)""",
+                            %(recurring_days)s, %(link)s, %(just_show_up)s)""",
                 {
                     'owner': g.user['id'],
                     'title': request.form['title'],
@@ -238,6 +270,7 @@ def create():
                     'project_id': request.form['at_category'] if request.form['category'] == 'AT' else request.form.get('project_id'),
                     'recurring_weekly': 1 if request.form.get('recurring_weekly') == 'true' else 0,
                     'recurring_monthly': request.form.get('recurring_monthly') or None,
+                    'recurring_days': clean_recurring_days(request.form),
                     'link': request.form.get('link') or None,
                     'just_show_up': 1 if request.form.get('just_show_up') == 'true' else 0,
                 }
@@ -301,6 +334,7 @@ def update(id):
                         project_id = %(project_id)s,
                         recurring_weekly = %(recurring_weekly)s,
                         recurring_monthly = %(recurring_monthly)s,
+                        recurring_days = %(recurring_days)s,
                         link = %(link)s,
                         just_show_up = %(just_show_up)s
                     WHERE id = %(id)s""",
@@ -319,6 +353,7 @@ def update(id):
                     'project_id': request.form['at_category'] if request.form['category'] == 'AT' else request.form.get('project_id'),
                     'recurring_weekly': 1 if request.form.get('recurring_weekly') == 'true' else 0,
                     'recurring_monthly': request.form.get('recurring_monthly') or None,
+                    'recurring_days': clean_recurring_days(request.form),
                     'link': request.form.get('link') or None,
                     'just_show_up': 1 if request.form.get('just_show_up') == 'true' else 0,
                 }
@@ -348,8 +383,9 @@ def opportunity_object(id):
         'project_id': opp[12],
         'recurring_weekly': opp[13] == 1,
         'recurring_monthly': opp[14],
-        'link': opp[15],
-        'just_show_up': opp[16] == 1
+        'recurring_days': opp[15],
+        'link': opp[16],
+        'just_show_up': opp[17] == 1
     }
 
 

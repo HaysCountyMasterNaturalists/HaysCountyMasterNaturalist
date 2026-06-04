@@ -3,12 +3,14 @@
 flaskapp/.venv/**/*
 flaskapp/instance/**/*
 flaskapp/flask_app/static/dist/**/*
-flaskapp/flask_app/__pycache__/
+flaskapp/**/__pycache__/
+flaskapp/.pytest_cache/
 opportunities/.vscode/**/*
 opportunities/dist/**/*
 opportunities/node_modules/**/*
 opportunities/public/**/*
 tmp/
+venv/
 
 # Logs
 logs

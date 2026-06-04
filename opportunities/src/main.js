@@ -1,4 +1,5 @@
 import './assets/main.css'
+import '@vueform/vueform/dist/vueform.css'
 
 import { createApp } from 'vue'
 import Vueform from '@vueform/vueform'
@@ -14,12 +15,10 @@ import Auth from './components/Auth.vue'
 import Users from './components/Users.vue'
 import ResetPassword from './components/ResetPassword.vue'
 
-
 axios.defaults.withCredentials = true
 axios.defaults.headers.common['X-CSRFToken'] = window.CSRF_TOKEN
 axios.interceptors.response.use((response) => {
   axios.defaults.headers.common['X-CSRFToken'] = response.headers['csrf-token']
-
   return response
 })
 
@@ -44,6 +43,6 @@ app.use(Vueform, vueformConfig)
 app.use(router)
 
 const vfm = createVfm()
-app.use(vfm) // vue final modal registration
+app.use(vfm)
 
 app.mount('#app')

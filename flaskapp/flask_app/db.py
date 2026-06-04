@@ -16,7 +16,7 @@ def get_db():
     DATABASE_URL = os.environ.get('DATABASE_URL') or 'localhost'
     DATABASE_NAME = os.environ.get('DATABASE_NAME') or 'hcmn'
     DATABASE_USER = os.environ.get('DATABASE_USER') or 'root'
-    DATABASE_PASSWORD = os.environ.get('DATABASE_PASSWORD') or 'armadillo'
+    DATABASE_PASSWORD = os.environ.get('DATABASE_PASSWORD') or ''
     if 'db' not in g:
         g.db = pymysql.connect(
             host=DATABASE_URL,
@@ -62,6 +62,7 @@ def init_db():
                       project_id VARCHAR (50),
                       recurring_weekly TINYINT(1) DEFAULT 0,
                       recurring_monthly INT,
+                      recurring_days VARCHAR (20),
                       link VARCHAR (255),
                       just_show_up TINYINT(1) DEFAULT 0,
                       CONSTRAINT fk_category FOREIGN KEY (owner)
