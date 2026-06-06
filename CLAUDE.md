@@ -63,4 +63,4 @@ CI runs these on PRs to `main` and `dev` (`.github/workflows/test.yml`).
 - push to `test` → test environment (`/opt/cal-test`, systemd unit `cal-test`)
 - push to `main` → prod environment (`/opt/cal-prod`, systemd unit `cal-prod`)
 
-The flow: build Vue → sed-rewrite asset hashes in `index.html` → rsync `flaskapp/` to the server → write a one-line `wsgi.py` → restart the systemd unit. `dev` is the default working branch; PRs typically target `dev`, and `dev` is later merged to `test` / `main` to deploy.
+The flow: build Vue → sed-rewrite asset hashes in `index.html` → rsync `flaskapp/` to the server → write a one-line `wsgi.py` → `pip install -r requirements.txt` into the server venv → run `flask_app/migrate.sh` (idempotent DB migrations, see `flask_app/migrate.py`) → restart the systemd unit and verify it stays up (`systemctl is-active`). `dev` is the default working branch; PRs typically target `dev`, and `dev` is later merged to `test` / `main` to deploy.

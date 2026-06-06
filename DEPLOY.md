@@ -181,6 +181,7 @@ rm -rf ~/mysite.old
 - **The Vue build needs Node 22.** Node 16 will crash with `crypto.getRandomValues is not a function`. Run `nvm use` to pick up `.nvmrc`.
 - **Downloading PA tarballs decompresses them in transit.** If you grab one via the Files UI, extract with `tar -xf` (not `tar -xzf`) — the `.tar.gz` extension is stale. Uploads to PA are not affected.
 - **`schema.sql` is unused.** The DB tables come from `db.init_db()` Python code, not from `schema.sql`. Safe to exclude from deploy tarballs.
+- **New dependencies must be installed by hand on PA.** Unlike the systemd deploy (which runs `pip install -r requirements.txt`), the PA tarball contains only `flask_app/` — not `requirements.txt`. When a deploy adds a package (e.g. `python-dotenv`), `pip install --user <package>` in a PA Bash console before reloading, or the app will crash on import. Compare `requirements.txt` against `pip freeze --user` when in doubt.
 
 ---
 
@@ -194,7 +195,9 @@ When you change a table definition in `db.py`, add the matching guarded step to 
 
 ## systemd (`cal-test` / `cal-prod`)
 
-**Automatic.** `.github/workflows/deploy.yml` runs `flask_app/migrate.sh` (which finds the app's Python and runs `migrate.py`) on the server **after** code sync and **before** the service restart — so any new column exists before the new code starts serving. Just commit the migration; pushing to `test` / `main` applies it.
+**Automatic.** After code sync, `.github/workflows/deploy.yml` runs `venv/bin/python -m pip install -r requirements.txt` (so new dependencies land before the app restarts — a missing dep crashes gunicorn on boot → 502), then `flask_app/migrate.sh` (which finds the app's Python and runs `migrate.py`) **before** the service restart — so any new column exists before the new code starts serving. The restart step then waits and checks `systemctl is-active`, so a crash-on-boot fails the deploy instead of shipping a dead service. Just commit the migration; pushing to `test` / `main` applies it.
+
+The unit (`cal-test.service`) loads its DB creds via `EnvironmentFile=/opt/cal-test/.env`, and `migrate.sh` loads that same unit environment, so both the app and the migration target the same DB (`cal_test` as `cal_test_user`, not the `hcmn`/`root` dev defaults).
 
 The migration step reads DB credentials the same way the app does (`DATABASE_*` from `/opt/cal-test/.env`, loaded via `load_dotenv()`), so it always targets the same DB the app uses. If the step fails, the workflow stops *before* the restart, leaving the old code running — fail-safe.
 
@@ -213,4 +216,4 @@ One line per schema change so each environment's drift from `init_db()` is audit
 
 | Change | Source commit | local | cal-test | cal-prod | PA (legacy) |
 |---|---|---|---|---|---|
-| `opportunities.recurring_days VARCHAR(20)` | f2e8b00 (multi-day weekly recurrence) | ✅ applied 2026-06-06 | auto on next deploy | auto on next deploy | pending (see PA section) |
+| `opportunities.recurring_days VARCHAR(20)` | f2e8b00 (multi-day weekly recurrence) | ✅ applied 2026-06-06 | ✅ applied 2026-06-06 (deploy) | auto on next deploy to `main` | pending (see PA section) |
