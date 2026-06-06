@@ -71,6 +71,11 @@ jobs:
             ssh -i ~/.ssh/deploy_key root@${{ secrets.SERVER_HOST }} \
             "cat > ${{ env.REMOTE_DIR }}/wsgi.py"
 
+      - name: Install Python dependencies
+        run: |
+          ssh -i ~/.ssh/deploy_key root@${{ secrets.SERVER_HOST }} \
+            "cd ${{ env.REMOTE_DIR }} && venv/bin/python -m pip install -q -r requirements.txt"
+
       - name: Apply DB migrations
         run: |
           ssh -i ~/.ssh/deploy_key root@${{ secrets.SERVER_HOST }} \
@@ -81,4 +86,6 @@ jobs:
           ssh -i ~/.ssh/deploy_key root@${{ secrets.SERVER_HOST }} \
             "chown -R ${{ env.SERVICE }}:${{ env.SERVICE }} ${{ env.REMOTE_DIR }} && \
              systemctl restart ${{ env.SERVICE }} && \
+             sleep 4 && \
+             systemctl is-active --quiet ${{ env.SERVICE }} && \
              systemctl status ${{ env.SERVICE }} --no-pager"
