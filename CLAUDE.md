@@ -39,7 +39,7 @@ export DEV=1                                # required when running Vite separat
 flask --app flask_app init-db               # first time only — drops & recreates tables
 flask --app flask_app run
 ```
-DB defaults (override with `DATABASE_URL`/`DATABASE_NAME`/`DATABASE_USER`/`DATABASE_PASSWORD` env vars): `localhost` / `hcmn` / `root` / `armadillo`. Create the `hcmn` database in MySQL before running `init-db`.
+DB defaults (override with `DATABASE_URL`/`DATABASE_NAME`/`DATABASE_USER`/`DATABASE_PASSWORD` env vars): `localhost` / `hcmn` / `root` / *(empty password)* — see `db.py` (`DATABASE_PASSWORD` falls back to `''`). Create the `hcmn` database in MySQL before running `init-db`. (Local `root@localhost` is configured with an empty password to match this default, so `mysql -u root` and the app both connect with no env vars.)
 
 **Production build:** `npm run build` from `opportunities/` produces hashed asset filenames in `flaskapp/flask_app/static/dist/assets/`. The `index.html` template references those filenames directly — the deploy workflow rewrites them via `sed` (see `.github/workflows/deploy.yml`). When testing a prod-style build locally, update the `<script>` and `<link>` tags in `templates/opportunities/index.html` to match the new hash, or run the same sed substitution.
 
