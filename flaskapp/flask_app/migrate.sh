@@ -33,8 +33,7 @@ load_service_env() {
   done < <(systemctl cat "$svc" 2>/dev/null | sed -n 's/^EnvironmentFile=//p')
 
   # Inline Environment= entries (space-separated KEY=VALUE on one line).
-  # Use if/fi, not `[ -n "$line" ] && export`: under `set -e` the latter aborts
-  # the whole script on the empty line when there are no inline Environment=.
+  # if/fi, not `&&`, so an empty line under `set -e` doesn't abort the script.
   while IFS= read -r line; do
     if [ -n "$line" ]; then export "$line"; fi
   done < <(systemctl show "$svc" -p Environment --value 2>/dev/null | tr ' ' '\n')
