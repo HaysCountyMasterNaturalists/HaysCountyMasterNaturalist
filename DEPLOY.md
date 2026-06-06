@@ -112,9 +112,18 @@ ls -lh ~/mysite/flask_app/static/dist/assets/
 # Confirm .env and instance/ are untouched
 ls -la ~/mysite/.env ~/mysite/instance/
 
+# Apply any pending DB schema migrations BEFORE the reload, so the new code and
+# its schema go live together. Idempotent — safe to run on every deploy; prints
+# "already present, skipping" when there's nothing to do. PA has no venv, so the
+# system python3 (with the --user pymysql/python-dotenv) runs it; cwd must be
+# ~/mysite so load_dotenv() picks up ~/mysite/.env for the DB credentials.
+cd ~/mysite && python3 flask_app/migrate.py
+
 # Reload the web app
 touch /var/www/haysmn_pythonanywhere_com_wsgi.py
 ```
+
+This is the same `flask_app/migrate.py` the systemd deploy runs automatically — on PA you run it by hand (one line) as part of the swap. Adding a future column is identical: commit the guarded step to `migrate.py`, and it gets applied on the next deploy to each environment. Back up first via the snapshot step above; if a migration ever needs reverting, restore the SQL dump (migrations here are forward-only).
 
 ### 6. Smoke test in the browser
 
@@ -172,3 +181,36 @@ rm -rf ~/mysite.old
 - **The Vue build needs Node 22.** Node 16 will crash with `crypto.getRandomValues is not a function`. Run `nvm use` to pick up `.nvmrc`.
 - **Downloading PA tarballs decompresses them in transit.** If you grab one via the Files UI, extract with `tar -xf` (not `tar -xzf`) — the `.tar.gz` extension is stale. Uploads to PA are not affected.
 - **`schema.sql` is unused.** The DB tables come from `db.init_db()` Python code, not from `schema.sql`. Safe to exclude from deploy tarballs.
+
+---
+
+# Schema migrations
+
+Schema lives in two places that must stay consistent:
+- `flask_app/db.py:init_db()` — the full current schema, used to build a **fresh** DB. `flask init-db` **drops and recreates** the tables (destructive — never run it against a live DB).
+- `flask_app/migrate.py` — **idempotent, incremental** migrations for **existing** DBs. Each migration checks the current schema (via `information_schema`, since MySQL has no `ADD COLUMN IF NOT EXISTS`) and only applies a change when it's missing, so it's safe to run repeatedly.
+
+When you change a table definition in `db.py`, add the matching guarded step to `migrate.py` (e.g. another `ensure_column(...)`). That single script is what brings every existing environment up to date.
+
+## systemd (`cal-test` / `cal-prod`)
+
+**Automatic.** `.github/workflows/deploy.yml` runs `flask_app/migrate.sh` (which finds the app's Python and runs `migrate.py`) on the server **after** code sync and **before** the service restart — so any new column exists before the new code starts serving. Just commit the migration; pushing to `test` / `main` applies it.
+
+The migration step reads DB credentials the same way the app does (`DATABASE_*` from `/opt/cal-test/.env`, loaded via `load_dotenv()`), so it always targets the same DB the app uses. If the step fails, the workflow stops *before* the restart, leaving the old code running — fail-safe.
+
+> **Note:** if a server ever supplies DB creds only through the systemd unit's `Environment=`/`EnvironmentFile=` (not a readable `.env` in the app dir), the deploy-time SSH session won't see them and `migrate.py` would fall back to defaults. Confirm `/opt/cal-test/.env` exists; if not, point `migrate.sh`/the deploy step at the unit's env file.
+
+**Manual run** (ad-hoc, or to pre-seed before a force-push):
+```sh
+ssh root@<SERVER_HOST>
+cd /opt/cal-test            # or /opt/cal-prod
+bash flask_app/migrate.sh
+```
+
+## Migration log
+
+One line per schema change so each environment's drift from `init_db()` is auditable.
+
+| Change | Source commit | local | cal-test | cal-prod | PA (legacy) |
+|---|---|---|---|---|---|
+| `opportunities.recurring_days VARCHAR(20)` | f2e8b00 (multi-day weekly recurrence) | ✅ applied 2026-06-06 | auto on next deploy | auto on next deploy | pending (see PA section) |
