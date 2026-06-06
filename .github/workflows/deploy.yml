@@ -74,7 +74,7 @@ jobs:
       - name: Apply DB migrations
         run: |
           ssh -i ~/.ssh/deploy_key root@${{ secrets.SERVER_HOST }} \
-            "cd ${{ env.REMOTE_DIR }} && bash flask_app/migrate.sh"
+            "cd ${{ env.REMOTE_DIR }} && SERVICE=${{ env.SERVICE }} bash flask_app/migrate.sh"
 
       - name: Restart service
         run: |

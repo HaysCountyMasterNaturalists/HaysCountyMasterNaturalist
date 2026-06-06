@@ -28,10 +28,15 @@ except ImportError:
 
 def connect():
     """Open a connection using the same defaults as flask_app/db.py:get_db()."""
+    host = os.environ.get('DATABASE_URL') or 'localhost'
+    name = os.environ.get('DATABASE_NAME') or 'hcmn'
+    user = os.environ.get('DATABASE_USER') or 'root'
+    # Diagnostic only -- never print the password.
+    print(f"  connecting as {user}@{host}/{name}")
     return pymysql.connect(
-        host=os.environ.get('DATABASE_URL') or 'localhost',
-        database=os.environ.get('DATABASE_NAME') or 'hcmn',
-        user=os.environ.get('DATABASE_USER') or 'root',
+        host=host,
+        database=name,
+        user=user,
         password=os.environ.get('DATABASE_PASSWORD') or '',
         autocommit=True,
     )
