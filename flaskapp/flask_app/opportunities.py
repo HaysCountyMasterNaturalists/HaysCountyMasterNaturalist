@@ -178,9 +178,13 @@ def clean_recurring_days(form):
     '''Normalizes recurring_days form input to a comma-separated string of
     Moment-style weekday indices (0=Sun..6=Sat), or None when empty.
 
-    Accepts repeated keys (Vueform's typical array serialization), bracketed
+    Accepts Vueform's indexed array serialization (recurring_days[0],
+    recurring_days[1], ...), bracketed keys (recurring_days[]), repeated plain
     keys, or a single comma-joined value.'''
-    raw = form.getlist('recurring_days') or form.getlist('recurring_days[]')
+    raw = []
+    for key in form.keys():
+        if key == 'recurring_days' or key.startswith('recurring_days['):
+            raw.extend(form.getlist(key))
     days = []
     for entry in raw:
         if entry is None:
@@ -192,17 +196,32 @@ def clean_recurring_days(form):
     return ','.join(days) if days else None
 
 def clean_date(dt):
-    '''Deals with am/pm input and converts to utc datetime object'''
-    if dt:
-        pm = "pm" in dt
-        dt = dt[:-3]
-        dat = central.localize(datetime.strptime(dt, '%Y-%m-%d %H:%M'))
+    '''Convert a Central-time date/datetime string to a UTC datetime.
+
+    Handles the formats the form submits:
+      - 'YYYY-MM-DD HH:MM'  (event_start / event_end, 24-hour)
+      - 'YYYY-MM-DD'        (expiration_date, date only)
+    and still tolerates a legacy ' am'/' pm' suffix from the old form.
+    '''
+    if not dt:
+        return None
+    dt = dt.strip()
+    if not dt:
+        return None
+    if dt.lower().endswith(('am', 'pm')):
+        pm = dt.lower().endswith('pm')
+        core = dt[:-2].strip()
+        dat = central.localize(datetime.strptime(core, '%Y-%m-%d %H:%M'))
         # don't add 12 hours to 12pm
         if pm and dat.hour != 12:
             dat += timedelta(hours=12)
         return dat.astimezone(utc)
-    else:
-        return None
+    for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d'):
+        try:
+            return central.localize(datetime.strptime(dt, fmt)).astimezone(utc)
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognized date format: {dt!r}")
 
 
 def get_opportunity(id):

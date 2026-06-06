@@ -183,10 +183,16 @@ class TestCleanRecurringDays:
     """Round-trips of the form-input normalizer used by create/update."""
 
     def test_repeated_keys(self):
-        # The most likely Vueform serialization for a list HiddenElement.
         from werkzeug.datastructures import MultiDict
         form = MultiDict([('recurring_days', '0'), ('recurring_days', '3'), ('recurring_days', '5')])
         assert opp_module.clean_recurring_days(form) == '0,3,5'
+
+    def test_indexed_array_keys(self):
+        # Vueform serializes a list HiddenElement as indexed keys:
+        # recurring_days[0], recurring_days[1], ...
+        from werkzeug.datastructures import MultiDict
+        form = MultiDict([('recurring_days[0]', '1'), ('recurring_days[1]', '3'), ('recurring_days[2]', '5')])
+        assert opp_module.clean_recurring_days(form) == '1,3,5'
 
     def test_bracketed_keys(self):
         from werkzeug.datastructures import MultiDict
