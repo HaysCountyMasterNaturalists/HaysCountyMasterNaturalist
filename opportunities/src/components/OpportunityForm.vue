@@ -64,8 +64,10 @@ function syncDatetime() {
 
 watch([() => form$.value?.el$('ui_date')?.value, () => currentType.value], ([newDate, type]) => {
   if (!newDate || type !== 'weekly' || !form$.value) return;
+  // Seed the anchor date's weekday only when nothing is chosen yet, so an
+  // existing selection (loaded or user-picked) is never overridden.
   const dayIndex = moment(newDate).day().toString();
-  if (!currentDays.value.includes(dayIndex)) toggleDay(dayIndex)
+  if (currentDays.value.length === 0) toggleDay(dayIndex)
 });
 
 function duplicate() {
@@ -82,6 +84,16 @@ async function deleteOpp() {
   }
 }
 
+// Named function (not an inline template arrow) so `router` is in lexical scope.
+function handleResponse(res) {
+  if (res.data?.success) {
+    success.value = true;
+    setTimeout(() => router.push('/'), 2000);
+  } else {
+    err.value = 'Error';
+  }
+}
+
 async function fetchOpportunity(id) {
   const res = await axios.get(DOMAIN.concat(`/api/opportunities/${id}`));
   const data = await res.data;
@@ -93,6 +105,9 @@ async function fetchOpportunity(id) {
 
   currentType.value = data.type;
   currentDays.value = data.recurring_days ? data.recurring_days.split(',') : [];
+
+  // Show the day selector when the event repeats on more than one weekday.
+  if (currentDays.value.length > 1) data.multiple_days = true;
 
   if (data.event_start && data.event_start !== "null" && moment(data.event_start).isValid()) {
     data.ui_date = moment(data.event_start).format('YYYY-MM-DD');
@@ -127,7 +142,7 @@ onMounted(async () => {
   <div class="form-outer-wrapper" :class="{ 'is-disabled': success }">
     <Vueform
       :endpoint="endpoint"
-      @response="(res) => res.data.success ? (success = true, setTimeout(() => router.push('/'), 2000)) : (err = 'Error')"
+      @response="handleResponse"
       ref="form$"
       class="opportunity-form"
     >
