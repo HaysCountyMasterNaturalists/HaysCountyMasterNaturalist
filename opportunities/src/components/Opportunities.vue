@@ -212,7 +212,7 @@ function removeExpired(opps) {
       expirationDate = opp.expiration_date || opp.event_start
     }
 
-    return !expirationDate || moment() <= moment(expirationDate)
+    return !expirationDate || moment().isSameOrBefore(moment(expirationDate), 'day')
   })
 }
 
