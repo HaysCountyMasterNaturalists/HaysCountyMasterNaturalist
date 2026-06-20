@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
 from flask import (
-    Blueprint, g, render_template, request
+    Blueprint, current_app, g, render_template, request
 )
 from pytz import timezone
 from werkzeug.exceptions import abort
@@ -118,7 +118,10 @@ def find_recurring(opportunities):
     six_months_out = now + relativedelta(months=6)
     fortyfive_days_ago = now - timedelta(days=45)
 
-    for opp in opportunities:
+    # Expand one opportunity into all_opportunities. A closure so the loop below
+    # can wrap each call: one malformed recurrence must never raise out of the
+    # public list endpoint and blank the whole calendar for everyone.
+    def expand(opp):
         expiration_date = opp.get('expiration_date')
 
         if opp['recurring_weekly']:
@@ -147,6 +150,14 @@ def find_recurring(opportunities):
 
         elif opp['recurring_monthly']:
             # adds opp every month for 3 months out (accounting for expiration_date).
+            # recurring_monthly is the Nth week (1-5) of the month; (N-1)*7 is used
+            # below as a day-of-month floor, so a value >5 makes that floor exceed
+            # every real date and the advance loop never terminates. Skip such rows.
+            if not 1 <= opp['recurring_monthly'] <= 5:
+                current_app.logger.warning(
+                    "find_recurring: skipping opp %s with out-of-range "
+                    "recurring_monthly=%s", opp.get('id'), opp['recurring_monthly'])
+                return
             day = opp['event_start']
             original_hour = day.astimezone(central).hour
             at_least_date = (opp['recurring_monthly'] - 1) * 7
@@ -163,6 +174,13 @@ def find_recurring(opportunities):
             # adds non-recurring opps as-is.
             convert_to_local_time(opp)
             all_opportunities.append(opp)
+
+    for opp in opportunities:
+        try:
+            expand(opp)
+        except Exception:
+            current_app.logger.exception(
+                "find_recurring: skipping opportunity %s", opp.get('id'))
 
     return all_opportunities
 
@@ -194,6 +212,22 @@ def clean_recurring_days(form):
             if d:
                 days.append(d)
     return ','.join(days) if days else None
+
+
+def clean_recurring_monthly(value):
+    '''Validate the monthly-recurrence value, or None when blank.
+
+    recurring_monthly is the Nth occurrence (1-5) of the event's weekday each
+    month. find_recurring expands it using (N-1)*7 as a day-of-month floor, so
+    only 1-5 are meaningful; anything outside that range is rejected here so a
+    bad value can never reach the expansion loop.'''
+    if not value:
+        return None
+    n = int(value)  # ValueError on non-numeric -> 400 via the caller's handler
+    if not 1 <= n <= 5:
+        raise ValueError('recurring_monthly must be between 1 and 5')
+    return n
+
 
 def clean_date(dt):
     '''Convert a Central-time date/datetime string to a UTC datetime.
@@ -288,7 +322,7 @@ def create():
                     'category': request.form['category'],
                     'project_id': request.form['at_category'] if request.form['category'] == 'AT' else request.form.get('project_id'),
                     'recurring_weekly': 1 if request.form.get('recurring_weekly') == 'true' else 0,
-                    'recurring_monthly': request.form.get('recurring_monthly') or None,
+                    'recurring_monthly': clean_recurring_monthly(request.form.get('recurring_monthly')),
                     'recurring_days': clean_recurring_days(request.form),
                     'link': request.form.get('link') or None,
                     'just_show_up': 1 if request.form.get('just_show_up') == 'true' else 0,
@@ -371,7 +405,7 @@ def update(id):
                     'category': request.form['category'],
                     'project_id': request.form['at_category'] if request.form['category'] == 'AT' else request.form.get('project_id'),
                     'recurring_weekly': 1 if request.form.get('recurring_weekly') == 'true' else 0,
-                    'recurring_monthly': request.form.get('recurring_monthly') or None,
+                    'recurring_monthly': clean_recurring_monthly(request.form.get('recurring_monthly')),
                     'recurring_days': clean_recurring_days(request.form),
                     'link': request.form.get('link') or None,
                     'just_show_up': 1 if request.form.get('just_show_up') == 'true' else 0,

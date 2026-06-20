@@ -33,6 +33,14 @@ const selectedWeekdayName = computed(() => {
 function setType(val) {
   currentType.value = val
   if (form$.value?.el$('type')) form$.value.el$('type').update(val)
+  // recurring_weekly/anytime are derived from the type. Their :value props only
+  // seed the elements, so once form.load() has set them on an edit they no longer
+  // track the type — push the derived values explicitly, same as `type` above.
+  if (form$.value?.el$('recurring_weekly')) form$.value.el$('recurring_weekly').update(val === 'weekly')
+  if (form$.value?.el$('anytime')) form$.value.el$('anytime').update(val === 'anytime')
+  // Clear the monthly value when the type isn't monthly so a leftover number
+  // can't make a one-day/weekly event expand as monthly in find_recurring.
+  if (val !== 'monthly' && form$.value?.el$('recurring_monthly')) form$.value.el$('recurring_monthly').update(null)
 }
 
 function toggleDay(val) {
@@ -194,7 +202,7 @@ onMounted(async () => {
 
           <DateElement name="ui_start_time" label="Start Time" :date="false" :time="true" value-format="HH:mm" display-format="hh:mm a" :conditions="[['type', '!=', 'anytime']]" @change="syncDatetime" />
           <DateElement name="ui_end_time" label="End Time" :date="false" :time="true" value-format="HH:mm" display-format="hh:mm a" :conditions="[['type', '!=', 'anytime']]" @change="syncDatetime" />
-          <TextElement name="recurring_monthly" label="Day of Month" :conditions="[['type', '==', 'monthly']]" />
+          <TextElement name="recurring_monthly" label="Week of the month (1-5)" rules="required|numeric|min:1|max:5" :conditions="[['type', '==', 'monthly']]" />
           <DateElement name="expiration_date" label="Expiration Date" :time="false" value-format="YYYY-MM-DD" :conditions="[['type', '!=', 'once']]" />
 
           <TextElement name="link" label="Sign Up Link" />
