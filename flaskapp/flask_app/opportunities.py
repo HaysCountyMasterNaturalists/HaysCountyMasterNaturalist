@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -49,7 +50,8 @@ def get_opportunities():
                     recurring_monthly,
                     recurring_days,
                     link,
-                    just_show_up
+                    just_show_up,
+                    updated_by
                 FROM opportunities
                 WHERE (event_start >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 45 DAY) AND (expiration_date IS NULL OR expiration_date >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 45 DAY)))
                     OR (anytime IS TRUE AND (expiration_date IS NULL OR expiration_date >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 45 DAY)))
@@ -77,7 +79,8 @@ def get_opportunities():
             'recurring_monthly': opp[14],
             'recurring_days': opp[15],
             'link': opp[16],
-            'just_show_up': opp[17] == 1
+            'just_show_up': opp[17] == 1,
+            'updated_by': opp[18]
         })
 
     return opportunities
@@ -272,7 +275,8 @@ def get_opportunity(id):
                         event_end,
                         expiration_date,
                         category, project_id, recurring_weekly,
-                        recurring_monthly, recurring_days, link, just_show_up
+                        recurring_monthly, recurring_days, link, just_show_up,
+                        updated_by
                 FROM opportunities
                 WHERE id = %(id)s""",
             {'id': id}
@@ -290,6 +294,93 @@ def convert_to_readable_local(dt):
     return utc.localize(dt).astimezone(central).strftime('%Y-%m-%d %H:%M') if dt else None
 
 
+# Categories that don't use a project_id (AT = Advanced Training,
+# EV = Event): exempt from project selection and assignment-based editing —
+# any editor (admin or project_coordinator) may create/edit them.
+EXEMPT_CATEGORIES = ('AT', 'EV')
+
+
+def combo_key(project_id, category):
+    return f"{project_id}::{category}"
+
+
+def _edit_allowed(is_admin, is_coordinator, category, project_id, assigned_combos):
+    '''Pure permission rule (no DB), so it's unit-testable:
+    - admins may edit anything;
+    - exempt categories (AT/EV) are editable by any coordinator;
+    - otherwise the user must be assigned to the opportunity's exact
+      (project, category) combination.
+    Ownership alone grants nothing, and a revoked coordinator with leftover
+    assignments is not allowed (current permission is what counts).'''
+    if is_admin:
+        return True
+    if not is_coordinator:
+        return False
+    if category in EXEMPT_CATEGORIES:
+        return True
+    return combo_key(project_id, category) in (assigned_combos or [])
+
+
+def edit_allowed(category, project_id):
+    '''Whether the current user may edit/delete this opportunity, using the
+    assignment combos already loaded onto g.user for this request.'''
+    return _edit_allowed(
+        g.user['admin'], g.user['project_coordinator'],
+        category, project_id, g.user.get('assigned_combos', [])
+    )
+
+
+def combo_exists(cursor, project_id, category):
+    '''Whether (project_id, category) is a valid combo in the registry: the
+    project exists and lists that category.'''
+    if not project_id or not category:
+        return False
+    cursor.execute(
+        "SELECT 1 FROM projects WHERE project_id = %(pid)s AND FIND_IN_SET(%(cat)s, categories) LIMIT 1",
+        {'pid': project_id, 'cat': category}
+    )
+    return cursor.fetchone() is not None
+
+
+def record_history(cursor, opp_id, action):
+    '''Write a full-snapshot audit row capturing the opportunity's current
+    state, who acted, and what action. For deletes, call before deleting.'''
+    cursor.execute(
+        """INSERT INTO opportunity_history
+                (opportunity_id, action, changed_by, snapshot)
+            VALUES (%(oid)s, %(action)s, %(uid)s, %(snap)s)""",
+        {
+            'oid': opp_id,
+            'action': action,
+            'uid': g.user['id'],
+            'snap': json.dumps(opportunity_object(opp_id), default=str),
+        }
+    )
+
+
+@bp.route('/api/projects')
+@editor_required
+def projects():
+    '''The project registry (populated via the admin spreadsheet import), for
+    the create/edit form's project picker.'''
+    with get_db() as cursor:
+        cursor.execute(
+            """SELECT project_id, name, categories,
+                      (last_imported IS NULL
+                       OR last_imported < (SELECT MAX(last_imported) FROM projects)) AS stale
+                FROM projects ORDER BY project_id"""
+        )
+        return {'projects': [
+            {
+                'project_id': r[0],
+                'name': r[1],
+                'categories': [c for c in (r[2] or '').split(',') if c],
+                'stale': bool(r[3]),
+            }
+            for r in cursor.fetchall()
+        ]}
+
+
 @bp.route('/api/opportunities')
 def list():
     return find_recurring(get_opportunities())
@@ -298,22 +389,29 @@ def list():
 @bp.route('/api/create', methods=['POST'])
 @editor_required
 def create():
+    category = request.form['category']
+    project_id = request.form['at_category'] if category == 'AT' else request.form.get('project_id')
     with get_db() as cursor:
         try:
+            # New opportunities must target a known project (#26). AT handling
+            # is still under review, so AT is exempt from this check for now.
+            if category not in EXEMPT_CATEGORIES and not combo_exists(cursor, project_id, category):
+                return { 'error': 'Please select an existing project' }, 400
             cursor.execute(
-                """INSERT INTO opportunities (owner, title, body, anywhere,
-                            anytime, location, city, event_start, event_end,
-                            expiration_date, category, project_id,
+                """INSERT INTO opportunities (owner, updated_by, title, body,
+                            anywhere, anytime, location, city, event_start,
+                            event_end, expiration_date, category, project_id,
                             recurring_weekly, recurring_monthly,
                             recurring_days, link, just_show_up)
-                    VALUES (%(owner)s, %(title)s, %(body)s, %(anywhere)s,
-                            %(anytime)s, %(location)s, %(city)s,
+                    VALUES (%(owner)s, %(updated_by)s, %(title)s, %(body)s,
+                            %(anywhere)s, %(anytime)s, %(location)s, %(city)s,
                             %(event_start)s, %(event_end)s, %(expiration_date)s,
                             %(category)s, %(project_id)s,
                             %(recurring_weekly)s, %(recurring_monthly)s,
                             %(recurring_days)s, %(link)s, %(just_show_up)s)""",
                 {
                     'owner': g.user['id'],
+                    'updated_by': g.user['id'],
                     'title': request.form['title'],
                     'body': request.form['body'],
                     'anywhere': 1 if request.form.get('anywhere') == 'true' else 0,
@@ -323,8 +421,8 @@ def create():
                     'event_start': clean_date(request.form.get('event_start')),
                     'event_end': clean_date(request.form.get('event_end')),
                     'expiration_date': clean_date(request.form.get('expiration_date')),
-                    'category': request.form['category'],
-                    'project_id': request.form['at_category'] if request.form['category'] == 'AT' else request.form.get('project_id'),
+                    'category': category,
+                    'project_id': project_id,
                     'recurring_weekly': 1 if request.form.get('recurring_weekly') == 'true' else 0,
                     'recurring_monthly': clean_recurring_monthly(request.form.get('recurring_monthly')),
                     'recurring_days': clean_recurring_days(request.form),
@@ -332,6 +430,7 @@ def create():
                     'just_show_up': 1 if request.form.get('just_show_up') == 'true' else 0,
                 }
             )
+            record_history(cursor, cursor.lastrowid, 'create')
         except Exception as e:
             return { 'error': str(e) }, 400
     return { 'success': True }
@@ -343,14 +442,17 @@ def delete(id):
     try:
         with get_db() as cursor:
             cursor.execute(
-                """SELECT owner
+                """SELECT project_id, category
                     FROM opportunities
                     WHERE id = %(id)s""",
                 { 'id': id }
             )
-            owner = cursor.fetchone()[0]
-            if not g.user['admin'] and g.user['id'] != owner:
+            row = cursor.fetchone()
+            if row is None:
+                return { 'error': 'Opportunity not found' }, 404
+            if not edit_allowed(row[1], row[0]):  # row = (project_id, category)
                 return { 'error': 'User does not have permission' }, 400
+            record_history(cursor, id, 'delete')  # snapshot before deletion
             cursor.execute(
                 """DELETE from opportunities
                     WHERE id = %(id)s""",
@@ -364,20 +466,30 @@ def delete(id):
 @bp.route('/api/update/<int:id>', methods=['POST'])
 @editor_required
 def update(id):
+    category = request.form['category']
+    project_id = request.form['at_category'] if category == 'AT' else request.form.get('project_id')
     try:
         with get_db() as cursor:
             cursor.execute(
-                """SELECT owner
+                """SELECT project_id, category
                     FROM opportunities
                     WHERE id = %(id)s""",
                 { 'id': id }
             )
-            owner = cursor.fetchone()[0]
-            if not g.user['admin'] and g.user['id'] != owner:
+            row = cursor.fetchone()
+            if row is None:
+                return { 'error': 'Opportunity not found' }, 404
+            # Edit rights come from the opportunity's CURRENT project (admin or a
+            # matching assignment), not from ownership (#26). Exempt categories
+            # (AT/EV) are editable by any coordinator (handled in edit_allowed).
+            if not edit_allowed(row[1], row[0]):  # row = (project_id, category)
                 return { 'error': 'User does not have permission' }, 400
+            if category not in EXEMPT_CATEGORIES and not combo_exists(cursor, project_id, category):
+                return { 'error': 'Please select an existing project' }, 400
             cursor.execute(
                 """UPDATE opportunities
                     SET
+                        updated_by = %(updated_by)s,
                         title = %(title)s,
                         body = %(body)s,
                         anywhere = %(anywhere)s,
@@ -397,6 +509,7 @@ def update(id):
                     WHERE id = %(id)s""",
                 {
                     'id': id,
+                    'updated_by': g.user['id'],
                     'title': request.form['title'],
                     'body': request.form['body'],
                     'anywhere': 1 if request.form.get('anywhere') == 'true' else 0,
@@ -406,8 +519,8 @@ def update(id):
                     'event_start': clean_date(request.form.get('event_start')),
                     'event_end': clean_date(request.form.get('event_end')),
                     'expiration_date': clean_date(request.form.get('expiration_date')),
-                    'category': request.form['category'],
-                    'project_id': request.form['at_category'] if request.form['category'] == 'AT' else request.form.get('project_id'),
+                    'category': category,
+                    'project_id': project_id,
                     'recurring_weekly': 1 if request.form.get('recurring_weekly') == 'true' else 0,
                     'recurring_monthly': clean_recurring_monthly(request.form.get('recurring_monthly')),
                     'recurring_days': clean_recurring_days(request.form),
@@ -415,6 +528,7 @@ def update(id):
                     'just_show_up': 1 if request.form.get('just_show_up') == 'true' else 0,
                 }
             )
+            record_history(cursor, id, 'update')
     except Exception as e:
         return { 'error': str(e) }, 400
 
@@ -442,7 +556,8 @@ def opportunity_object(id):
         'recurring_monthly': opp[14],
         'recurring_days': opp[15],
         'link': opp[16],
-        'just_show_up': opp[17] == 1
+        'just_show_up': opp[17] == 1,
+        'updated_by': opp[18]
     }
 
 

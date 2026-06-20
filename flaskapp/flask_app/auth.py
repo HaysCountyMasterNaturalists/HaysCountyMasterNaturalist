@@ -108,7 +108,19 @@ def load_logged_in_user():
                 session.pop('user_id')
                 g.user = None
             else:
-                g.user = {'id': user[0], 'email': user[1], 'admin': user[2], 'project_coordinator': user[3]}
+                cursor.execute(
+                    """SELECT project_id, category FROM coordinator_assignments
+                        WHERE coordinator_id = %(uid)s""",
+                    {'uid': user[0]}
+                )
+                assigned_combos = [f"{r[0]}::{r[1]}" for r in cursor.fetchall()]
+                g.user = {
+                    'id': user[0],
+                    'email': user[1],
+                    'admin': user[2],
+                    'project_coordinator': user[3],
+                    'assigned_combos': assigned_combos,
+                }
 
 
 @bp.route('/logout', methods=['POST'])
