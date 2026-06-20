@@ -387,6 +387,8 @@ fetchUser()
       <span> | </span>
       <RouterLink v-if="user.admin" to="/users">Manage Users</RouterLink>
       <span v-if="user.admin"> | </span>
+      <RouterLink v-if="user.admin" to="/assignments">Manage Projects</RouterLink>
+      <span v-if="user.admin"> | </span>
       <a href="#" @click.stop.prevent="logout">Logout</a>
     </div>
     <div v-else>
@@ -462,7 +464,8 @@ fetchUser()
           <div :class="{ 'any-time-opps': day === ANY_TIME && startWeekOnSunday }">
             <Day
               :admin="user.admin"
-              :userId="user.id"
+              :coordinator="user.project_coordinator"
+              :assigned-combos="user.assigned_combos || []"
               :opps="filteredOpportunities[day]"
               @modalOpp="openModal"
             />

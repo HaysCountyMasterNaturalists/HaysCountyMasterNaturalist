@@ -21,6 +21,29 @@ const notDeleted = ref(true)
 
 const currentType = ref('once')
 const currentDays = ref([])
+const comboItems = ref([])
+
+// The combined "Project / Activity" dropdown encodes both fields as
+// "<category>|<project_or_activity>". Parsing it sets the hidden category,
+// project_id, and at_category fields the backend expects.
+function onComboChange(value) {
+  if (!form$.value) return
+  const idx = (value || '').indexOf('|')
+  const category = idx >= 0 ? value.slice(0, idx) : ''
+  const rest = idx >= 0 ? value.slice(idx + 1) : ''
+  form$.value.el$('category')?.update(category)
+  if (category === 'AT') {
+    form$.value.el$('at_category')?.update(rest)
+    form$.value.el$('project_id')?.update('')
+  } else {
+    form$.value.el$('at_category')?.update('')
+    form$.value.el$('project_id')?.update(category === 'EV' ? '' : rest)
+  }
+}
+
+function comboValueFor(category, project_id) {
+  return `${category}|${category === 'EV' ? '' : (project_id || '')}`
+}
 
 const typeOptions = { once: 'One Day', weekly: 'Weekly', monthly: 'Monthly', anytime: 'Anytime' }
 const dayOptions = { '0': 'Sun', '1': 'Mon', '2': 'Tue', '3': 'Wed', '4': 'Thu', '5': 'Fri', '6': 'Sat' }
@@ -114,6 +137,11 @@ async function fetchOpportunity(id) {
   currentType.value = data.type;
   currentDays.value = data.recurring_days ? data.recurring_days.split(',') : [];
 
+  // Combined picker value from the saved category + project_id. For AT, the
+  // stored project_id IS the activity type, so mirror it into at_category.
+  data.project_category = comboValueFor(data.category, data.project_id);
+  if (data.category === 'AT') data.at_category = data.project_id;
+
   // Show the day selector when the event repeats on more than one weekday.
   if (currentDays.value.length > 1) data.multiple_days = true;
 
@@ -139,6 +167,17 @@ async function fetchOpportunity(id) {
 onMounted(async () => {
   const res = await axios.get(DOMAIN.concat(`/auth/user`));
   user.value = res.data;
+  const projRes = await axios.get(DOMAIN.concat(`/api/projects`));
+  const items = [];
+  // AT activity types first, then EV, then each project's (project, category) combos.
+  AT_CATEGORIES.forEach(at => items.push({ value: `AT|${at}`, label: `AT — ${at}` }));
+  items.push({ value: 'EV|', label: 'EV — Event' });
+  (projRes.data.projects || []).forEach(p => {
+    (p.categories || []).forEach(cat => {
+      items.push({ value: `${cat}|${p.project_id}`, label: `${p.project_id} ${p.name} — ${cat}` });
+    });
+  });
+  comboItems.value = items;
   if (props.id) {
     fetchOpportunity(props.id);
     endpoint.value = `${DOMAIN}/api/update/${props.id}`;
@@ -156,7 +195,7 @@ onMounted(async () => {
     >
       <template #empty>
         <FormSteps>
-          <FormStep name="desc" label="Description" :elements="['title', 'body', 'category', 'project_id', 'at_category']" :labels="{ next: 'Continue to Where' }" />
+          <FormStep name="desc" label="Description" :elements="['title', 'body', 'project_category']" :labels="{ next: 'Continue to Where' }" />
           <FormStep name="where" label="Where" :elements="['anywhere', 'location', 'city']" :labels="{ next: 'Continue to When', previous: 'Back' }" />
           <FormStep name="when" label="When" :elements="['type', 'type_anchor', 'ui_date', 'p_weekday_display', 'multiple_days', 'days_anchor', 'ui_start_time', 'ui_end_time', 'recurring_monthly', 'expiration_date']" :labels="{ next: 'Continue to RSVP', previous: 'Back' }" />
           <FormStep name="rsvp" label="RSVP" :elements="['link', 'just_show_up']" :labels="{ finish: 'Submit', previous: 'Back' }" />
@@ -179,9 +218,8 @@ onMounted(async () => {
 
           <TextElement name="title" label="Title" rules="required" />
           <EditorElement name="body" label="Description" rules="required" />
-          <SelectElement name="category" label="Category" :items="CATEGORY_CODES" rules="required" />
-          <TextElement name="project_id" label="Project ID" rules="numeric" :conditions="[['category', 'not_in', ['AT', 'EV']]]" />
-          <SelectElement name="at_category" label="Activity Type" :items="AT_CATEGORIES" :conditions="[['category', '==', 'AT']]" />
+          <HiddenElement name="category" /><HiddenElement name="project_id" /><HiddenElement name="at_category" />
+          <SelectElement name="project_category" label="Project / Activity" :items="comboItems" :search="true" rules="required" @change="onComboChange" />
 
           <ToggleElement name="anywhere" label="This can be done anywhere" class="aligned-toggle" />
           <TextElement name="location" label="Location" :conditions="[['anywhere', '==', false]]" />

@@ -6,15 +6,21 @@ import { getCategory, formatDateDisplay } from '../utils.js'
 
 const props = defineProps({
   opps: Array,
-  userId: Number,
   admin: Boolean,
+  coordinator: Boolean,
+  assignedCombos: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['modalOpp'])
 
+// AT/EV are exempt: any coordinator/admin may edit. Others require a matching
+// (project, category) assignment (or admin).
+const EXEMPT_CATEGORIES = ['AT', 'EV']
 
-function isEditor(admin, userId, opp) {
-  return admin || opp.owner === userId
+function canEdit(opp) {
+  if (props.admin) return true
+  if (EXEMPT_CATEGORIES.includes(opp.category)) return props.coordinator
+  return props.assignedCombos.includes(`${opp.project_id}::${opp.category}`)
 }
 
 function openModal(opp) {
@@ -26,7 +32,7 @@ function openModal(opp) {
 <template>
   <div class="opp-list">
     <div class="opp-wrapper" v-for="opp in opps" @click="openModal(opp)">
-      <div v-if="isEditor(admin, userId, opp)" style="text-align: right;">
+      <div v-if="canEdit(opp)" style="text-align: right;">
         <RouterLink class="hover-show vf-btn vf-btn-primary" :to="`/${opp.id}`">Edit</RouterLink>
       </div>
       <h2>{{ opp.title }}</h2>
