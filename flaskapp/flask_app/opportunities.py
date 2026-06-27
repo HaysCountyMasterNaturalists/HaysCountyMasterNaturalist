@@ -92,11 +92,15 @@ def convert_to_local_time(opp, day=None, original_hour=None):
         event_length = timedelta(seconds=3600)
         if opp.get('event_end'):
             event_length = opp['event_end'] - opp['event_start']
+        # Capture the event's true local time-of-day before `day` (which may be
+        # an iteration cursor seeded from a 45-days-ago wall-clock time) replaces
+        # event_start, so we can restore both hour and minute below.
+        original_minute = opp['event_start'].astimezone(central).minute
         if day:
             opp['event_start'] = day
         localized_start = opp['event_start'].astimezone(central)
-        if original_hour and localized_start.hour != original_hour:
-            localized_start = localized_start.replace(hour=original_hour)
+        if original_hour is not None:
+            localized_start = localized_start.replace(hour=original_hour, minute=original_minute)
         opp['event_start'] = localized_start.strftime('%Y-%m-%d %H:%M')
         opp['event_end'] = (localized_start + event_length).strftime('%Y-%m-%d %H:%M')
 
