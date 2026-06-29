@@ -157,6 +157,82 @@ def test_monthly_branch_unchanged_by_weekly_refactor():
         assert occ['recurring_monthly'] == 2
 
 
+def test_weekly_preserves_event_minute_not_wall_clock(monkeypatch):
+    # Regression: weekly expansion seeds its cursor with max(event_start, now-45d),
+    # so occurrences clamped to the 45-day floor used to inherit *now*'s minute
+    # (convert_to_local_time restored only the hour). Freeze now at :37 and give
+    # the event a :30 start that's well before the window; every occurrence must
+    # read :30, never :37. The event_end (:45) confirms the duration end too.
+    frozen = utc.localize(datetime(2026, 5, 23, 12, 37, 0))
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return frozen.replace(tzinfo=None)
+            return frozen.astimezone(tz)
+
+    monkeypatch.setattr(opp_module, 'datetime', FakeDatetime)
+
+    # 2026-03-23 is after DST starts (2026-03-08) so astimezone is CDT, and it's
+    # before the 45-day floor (2026-04-08), so the cursor clamps to now-45d.
+    start = utc.localize(datetime(2026, 3, 23, 14, 30, 0))  # 09:30 CDT
+    end = utc.localize(datetime(2026, 3, 23, 16, 45, 0))    # 11:45 CDT
+    expiration = utc.localize(datetime(2026, 5, 31, 23, 0, 0))
+    opp = make_opp(
+        recurring_weekly=True, event_start=start, event_end=end,
+        expiration_date=expiration,
+    )
+
+    result = find_recurring([opp])
+
+    assert result, 'expected at least one occurrence'
+    for occ in result:
+        assert occ['event_start'].endswith(' 09:30'), occ['event_start']
+        assert occ['event_end'].endswith(' 11:45'), occ['event_end']
+
+
+def test_weekly_midnight_event_keeps_zero_hour(monkeypatch):
+    # Regression for the `if original_hour and ...` guard: hour 0 is falsy, so a
+    # midnight event's hour was never restored and occurrences leaked now-45d's
+    # hour (07:00 CDT). The fix guards on `is not None`. Frozen now is 07:00 CDT,
+    # so a broken impl would surface as 07:00 instead of 00:00.
+    start = utc.localize(datetime(2026, 3, 23, 5, 0, 0))   # 00:00 CDT (midnight)
+    end = utc.localize(datetime(2026, 3, 23, 6, 0, 0))     # 01:00 CDT
+    expiration = utc.localize(datetime(2026, 5, 31, 23, 0, 0))
+    opp = make_opp(
+        recurring_weekly=True, event_start=start, event_end=end,
+        expiration_date=expiration,
+    )
+
+    result = find_recurring([opp])
+
+    assert result, 'expected at least one occurrence'
+    for occ in result:
+        assert occ['event_start'].endswith(' 00:00'), occ['event_start']
+        assert occ['event_end'].endswith(' 01:00'), occ['event_end']
+
+
+def test_monthly_preserves_event_minute(monkeypatch):
+    # The monthly branch advances the cursor from event_start in 7-day steps, so
+    # minutes are preserved structurally — but lock it in so a future refactor of
+    # convert_to_local_time can't regress it. recurring_monthly=2 = 2nd week.
+    start = utc.localize(datetime(2026, 5, 13, 14, 30, 0))  # 2nd Wed of May, 09:30 CDT
+    end = utc.localize(datetime(2026, 5, 13, 16, 15, 0))    # 11:15 CDT
+    expiration = utc.localize(datetime(2026, 8, 31, 23, 0, 0))
+    opp = make_opp(
+        recurring_monthly=2, event_start=start, event_end=end,
+        expiration_date=expiration,
+    )
+
+    result = find_recurring([opp])
+
+    assert result, 'expected at least one occurrence'
+    for occ in result:
+        assert occ['event_start'].endswith(' 09:30'), occ['event_start']
+        assert occ['event_end'].endswith(' 11:15'), occ['event_end']
+
+
 def test_mixed_list_preserves_non_recurring_alongside_expansions():
     weekly_start = utc.localize(datetime(2026, 5, 4, 14, 0, 0))  # Mon
     weekly_expiration = utc.localize(datetime(2026, 5, 12, 23, 0, 0))

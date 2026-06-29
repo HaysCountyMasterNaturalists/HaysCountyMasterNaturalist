@@ -1,10 +1,9 @@
 import functools
 from itsdangerous.url_safe import URLSafeTimedSerializer
-import os
 
 import bcrypt
 from flask import (
-    Blueprint, flash, g, redirect, render_template, request, session, url_for
+    Blueprint, current_app, flash, g, redirect, render_template, request, session, url_for
 )
 
 from flask_app.db import get_db
@@ -37,6 +36,12 @@ def get_user_by_email(email):
 def signin(user_id):
     session.clear()
     session['user_id'] = user_id
+    with get_db() as cursor:
+        cursor.execute(
+            """UPDATE master_naturalist SET last_login = UTC_TIMESTAMP()
+                WHERE id = %(user_id)s""",
+            {'user_id': user_id}
+        )
     return { 'success': True }
 
 
@@ -108,7 +113,19 @@ def load_logged_in_user():
                 session.pop('user_id')
                 g.user = None
             else:
-                g.user = {'id': user[0], 'email': user[1], 'admin': user[2], 'project_coordinator': user[3]}
+                cursor.execute(
+                    """SELECT project_id, category FROM coordinator_assignments
+                        WHERE coordinator_id = %(uid)s""",
+                    {'uid': user[0]}
+                )
+                assigned_combos = [f"{r[0]}::{r[1]}" for r in cursor.fetchall()]
+                g.user = {
+                    'id': user[0],
+                    'email': user[1],
+                    'admin': user[2],
+                    'project_coordinator': user[3],
+                    'assigned_combos': assigned_combos,
+                }
 
 
 @bp.route('/logout', methods=['POST'])
@@ -136,7 +153,7 @@ def reset_password(token, id):
         email, previous_hashed_password = cursor.fetchone()
 
 
-    serializer = URLSafeTimedSerializer(os.environ.get('SECRET_KEY'))
+    serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
     try:
         token_user_email = serializer.loads(
             token,
@@ -217,7 +234,7 @@ def generate_password_link(id):
         )
         email, hashed_password = cursor.fetchone()
 
-        serializer = URLSafeTimedSerializer(os.environ.get('SECRET_KEY'))
+        serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
 
     secret_key = serializer.dumps(email, salt=hashed_password)
 
