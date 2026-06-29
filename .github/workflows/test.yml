@@ -27,6 +27,26 @@ jobs:
         working-directory: flaskapp
         run: python -m pytest -v
 
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: opportunities/package-lock.json
+
+      - name: Install dependencies
+        working-directory: opportunities
+        run: npm ci
+
+      - name: Run frontend unit tests
+        working-directory: opportunities
+        run: npm run test:unit
+
   accessibility:
     runs-on: ubuntu-latest
     steps:

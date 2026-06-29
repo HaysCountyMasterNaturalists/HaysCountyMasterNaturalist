@@ -389,6 +389,8 @@ fetchUser()
       <span v-if="user.admin"> | </span>
       <RouterLink v-if="user.admin" to="/assignments">Manage Projects</RouterLink>
       <span v-if="user.admin"> | </span>
+      <RouterLink v-if="user.admin" to="/history">History</RouterLink>
+      <span v-if="user.admin"> | </span>
       <a href="#" @click.stop.prevent="logout">Logout</a>
     </div>
     <div v-else>

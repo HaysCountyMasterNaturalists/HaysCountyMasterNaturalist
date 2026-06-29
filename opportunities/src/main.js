@@ -14,6 +14,7 @@ import OpportunityForm from './components/OpportunityForm.vue'
 import Auth from './components/Auth.vue'
 import Users from './components/Users.vue'
 import ProjectAssignments from './components/ProjectAssignments.vue'
+import History from './components/History.vue'
 import ResetPassword from './components/ResetPassword.vue'
 
 axios.defaults.withCredentials = true
@@ -32,6 +33,7 @@ const routes = [
   { path: '/:id', component: OpportunityForm, props: true },
   { path: '/users', component: Users },
   { path: '/assignments', component: ProjectAssignments },
+  { path: '/history', component: History },
 ]
 
 const router = createRouter({

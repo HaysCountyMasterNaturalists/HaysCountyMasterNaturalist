@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 
 import { getCategory, formatDateDisplay } from '../utils.js'
+import { canEditOpportunity } from '../permissions.js'
 
 
 const props = defineProps({
@@ -13,14 +14,11 @@ const props = defineProps({
 
 const emit = defineEmits(['modalOpp'])
 
-// AT/EV are exempt: any coordinator/admin may edit. Others require a matching
-// (project, category) assignment (or admin).
-const EXEMPT_CATEGORIES = ['AT', 'EV']
-
 function canEdit(opp) {
-  if (props.admin) return true
-  if (EXEMPT_CATEGORIES.includes(opp.category)) return props.coordinator
-  return props.assignedCombos.includes(`${opp.project_id}::${opp.category}`)
+  return canEditOpportunity(
+    { admin: props.admin, project_coordinator: props.coordinator, assigned_combos: props.assignedCombos },
+    opp
+  )
 }
 
 function openModal(opp) {

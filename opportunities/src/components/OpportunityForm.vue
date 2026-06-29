@@ -4,7 +4,8 @@ import moment from 'moment'
 import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { AT_CATEGORIES, CATEGORY_CODES, CITIES, DOMAIN } from '../utils.js'
+import { CATEGORY_CODES, CITIES, DOMAIN } from '../utils.js'
+import { buildComboItems } from '../permissions.js'
 
 const props = defineProps({
   id: String
@@ -168,16 +169,7 @@ onMounted(async () => {
   const res = await axios.get(DOMAIN.concat(`/auth/user`));
   user.value = res.data;
   const projRes = await axios.get(DOMAIN.concat(`/api/projects`));
-  const items = [];
-  // AT activity types first, then EV, then each project's (project, category) combos.
-  AT_CATEGORIES.forEach(at => items.push({ value: `AT|${at}`, label: `AT — ${at}` }));
-  items.push({ value: 'EV|', label: 'EV — Event' });
-  (projRes.data.projects || []).forEach(p => {
-    (p.categories || []).forEach(cat => {
-      items.push({ value: `${cat}|${p.project_id}`, label: `${p.project_id} ${p.name} — ${cat}` });
-    });
-  });
-  comboItems.value = items;
+  comboItems.value = buildComboItems(projRes.data.projects, user.value);
   if (props.id) {
     fetchOpportunity(props.id);
     endpoint.value = `${DOMAIN}/api/update/${props.id}`;

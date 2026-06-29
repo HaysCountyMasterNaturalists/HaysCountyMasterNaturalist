@@ -83,6 +83,7 @@ export function getCategory(category) {
   return CATEGORY_CODES[category]
 }
 
-export const DOMAIN = window.location.port === "5173" ?
+const port = typeof window !== 'undefined' ? window.location.port : ''
+export const DOMAIN = port === "5173" ?
                         "http://localhost:5000" :
                         ""

@@ -165,6 +165,21 @@ def run():
                 )
             """)
 
+            # 2026-06: record each user's last successful login (stamped in
+            # auth.signin). NULL until the user next logs in -- no backfill.
+            ensure_column(
+                cursor, 'master_naturalist', 'last_login',
+                'last_login DATETIME AFTER project_coordinator',
+            )
+
+            # 2026-06: store the field-level diff (old/new per field) computed at
+            # edit time, so the history view doesn't have to infer it from
+            # neighbouring snapshots (which breaks for pre-audit opportunities).
+            ensure_column(
+                cursor, 'opportunity_history', 'changes',
+                'changes JSON AFTER snapshot',
+            )
+
             # Add future migrations below, each guarded so it is a no-op once
             # applied (use ensure_column / ensure_table).
 

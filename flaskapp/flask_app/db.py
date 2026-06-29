@@ -41,7 +41,8 @@ def init_db():
                       email VARCHAR (255) UNIQUE NOT NULL,
                       password LONGBLOB NOT NULL,
                       admin TINYINT(1) DEFAULT 0,
-                      project_coordinator TINYINT(1) DEFAULT 0
+                      project_coordinator TINYINT(1) DEFAULT 0,
+                      last_login DATETIME
                 );"""
             )
             cursor.execute(
@@ -97,7 +98,8 @@ def init_db():
                       action VARCHAR (10),
                       changed_by INT,
                       changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                      snapshot JSON
+                      snapshot JSON,
+                      changes JSON
                 );"""
             )
         close_db()

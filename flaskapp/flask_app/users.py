@@ -1,4 +1,5 @@
 import io
+import json
 import re
 
 import openpyxl
@@ -6,6 +7,7 @@ from flask import Blueprint, request
 
 from flask_app.auth import admin_required
 from flask_app.db import get_db
+from flask_app.opportunities import convert_to_readable_local
 
 
 bp = Blueprint('users', __name__)
@@ -39,11 +41,36 @@ def list():
     users = []
     with get_db() as cursor:
         cursor.execute(
-            """SELECT id, email, admin, project_coordinator FROM master_naturalist"""
+            """SELECT id, email, admin, project_coordinator, last_login
+                FROM master_naturalist ORDER BY email"""
         )
-
         db_users = cursor.fetchall()
-        users = [{'id': user[0], 'email': user[1], 'admin': user[2], 'project_coordinator': user[3]} for user in db_users]
+
+        # The (project, category) combos each coordinator is assigned to --
+        # the same granularity as the Manage Projects page.
+        cursor.execute(
+            """SELECT ca.coordinator_id, ca.project_id, ca.category, p.name
+                FROM coordinator_assignments ca
+                LEFT JOIN projects p ON p.project_id = ca.project_id
+                ORDER BY ca.project_id, ca.category"""
+        )
+        assigned = {}
+        for coordinator_id, project_id, category, name in cursor.fetchall():
+            assigned.setdefault(coordinator_id, []).append(
+                {'project_id': project_id, 'category': category, 'name': name}
+            )
+
+    users = [
+        {
+            'id': user[0],
+            'email': user[1],
+            'admin': user[2],
+            'project_coordinator': user[3],
+            'last_login': convert_to_readable_local(user[4]),
+            'assigned_projects': assigned.get(user[0], []),
+        }
+        for user in db_users
+    ]
 
     return users
 
@@ -69,6 +96,62 @@ def update(id):
         return { 'error': str(e) }, 400
 
     return { 'success': True }
+
+
+@bp.route('/api/history')
+@admin_required
+def history():
+    '''Opportunity audit log, newest first. Optional filters: ``user`` (the
+    editor who made the change) and ``project`` (the project_id recorded in the
+    snapshot at the time of the change). For updates, the field-level diff is
+    read from the ``changes`` stored on the row when the edit happened.'''
+    user_filter = request.args.get('user')
+    project_filter = request.args.get('project')
+    clauses, params = [], {}
+    if user_filter:
+        clauses.append("h.changed_by = %(user)s")
+        params['user'] = user_filter
+    if project_filter:
+        clauses.append("JSON_UNQUOTE(JSON_EXTRACT(h.snapshot, '$.project_id')) = %(project)s")
+        params['project'] = project_filter
+    where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
+
+    with get_db() as cursor:
+        cursor.execute("SELECT project_id, name FROM projects")
+        project_names = {pid: name for pid, name in cursor.fetchall()}
+
+        cursor.execute(
+            f"""SELECT h.id, h.opportunity_id, h.action, h.changed_by,
+                       h.changed_at, h.snapshot, h.changes, m.email
+                FROM opportunity_history h
+                LEFT JOIN master_naturalist m ON m.id = h.changed_by
+                {where}
+                ORDER BY h.changed_at DESC, h.id DESC
+                LIMIT 500""",
+            params
+        )
+        rows = cursor.fetchall()
+
+    out = []
+    for hid, opp_id, action, changed_by, changed_at, snapshot, changes, email in rows:
+        snapshot = json.loads(snapshot) if isinstance(snapshot, str) else (snapshot or {})
+        snapshot = snapshot or {}
+        changes = json.loads(changes) if isinstance(changes, str) else changes
+        project_id = snapshot.get('project_id')
+        out.append({
+            'id': hid,
+            'opportunity_id': opp_id,
+            'action': action,
+            'changed_by': changed_by,
+            'changed_at': convert_to_readable_local(changed_at),
+            'email': email,
+            'title': snapshot.get('title'),
+            'project_id': project_id,
+            'project_name': project_names.get(project_id),
+            'category': snapshot.get('category'),
+            'changes': changes or [],
+        })
+    return out
 
 
 @bp.route('/api/assignments')

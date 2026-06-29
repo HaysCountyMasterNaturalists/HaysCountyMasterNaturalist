@@ -304,6 +304,42 @@ def combo_key(project_id, category):
     return f"{project_id}::{category}"
 
 
+# Fields shown in the history diff, in display order. id/owner/updated_by are
+# intentionally excluded: id never changes, owner is the creator, and updated_by
+# is the editor (already shown as a column in the history view).
+HISTORY_DIFF_FIELDS = [
+    ('title', 'Title'),
+    ('body', 'Description'),
+    ('category', 'Category'),
+    ('project_id', 'Project'),
+    ('event_start', 'Start'),
+    ('event_end', 'End'),
+    ('expiration_date', 'Expires'),
+    ('location', 'Location'),
+    ('city', 'City'),
+    ('anywhere', 'Anywhere'),
+    ('anytime', 'Anytime'),
+    ('recurring_weekly', 'Recurring weekly'),
+    ('recurring_monthly', 'Recurring (week of month)'),
+    ('recurring_days', 'Recurring days'),
+    ('link', 'Link'),
+    ('just_show_up', 'Just show up'),
+]
+
+
+def diff_snapshots(before, after):
+    '''Fields that differ between two opportunity snapshots, as
+    [{field, label, old, new}], in HISTORY_DIFF_FIELDS order.'''
+    before = before or {}
+    after = after or {}
+    changes = []
+    for field, label in HISTORY_DIFF_FIELDS:
+        old, new = before.get(field), after.get(field)
+        if old != new:
+            changes.append({'field': field, 'label': label, 'old': old, 'new': new})
+    return changes
+
+
 def _edit_allowed(is_admin, is_coordinator, category, project_id, assigned_combos):
     '''Pure permission rule (no DB), so it's unit-testable:
     - admins may edit anything;
@@ -342,18 +378,23 @@ def combo_exists(cursor, project_id, category):
     return cursor.fetchone() is not None
 
 
-def record_history(cursor, opp_id, action):
+def record_history(cursor, opp_id, action, before=None):
     '''Write a full-snapshot audit row capturing the opportunity's current
-    state, who acted, and what action. For deletes, call before deleting.'''
+    state, who acted, and what action. For deletes, call before deleting. For
+    updates, pass ``before`` (the snapshot taken before the change) so the
+    field-level diff is computed and stored on the row.'''
+    snapshot = opportunity_object(opp_id)
+    changes = diff_snapshots(before, snapshot) if action == 'update' else None
     cursor.execute(
         """INSERT INTO opportunity_history
-                (opportunity_id, action, changed_by, snapshot)
-            VALUES (%(oid)s, %(action)s, %(uid)s, %(snap)s)""",
+                (opportunity_id, action, changed_by, snapshot, changes)
+            VALUES (%(oid)s, %(action)s, %(uid)s, %(snap)s, %(changes)s)""",
         {
             'oid': opp_id,
             'action': action,
             'uid': g.user['id'],
-            'snap': json.dumps(opportunity_object(opp_id), default=str),
+            'snap': json.dumps(snapshot, default=str),
+            'changes': json.dumps(changes, default=str) if changes is not None else None,
         }
     )
 
@@ -393,6 +434,10 @@ def create():
     project_id = request.form['at_category'] if category == 'AT' else request.form.get('project_id')
     with get_db() as cursor:
         try:
+            # A coordinator may only create for a (project, category) they're
+            # assigned to; AT/EV are open to any coordinator; admins, anything.
+            if not edit_allowed(category, project_id):
+                return { 'error': 'User does not have permission for this project/category' }, 400
             # New opportunities must target a known project (#26). AT handling
             # is still under review, so AT is exempt from this check for now.
             if category not in EXEMPT_CATEGORIES and not combo_exists(cursor, project_id, category):
@@ -484,8 +529,15 @@ def update(id):
             # (AT/EV) are editable by any coordinator (handled in edit_allowed).
             if not edit_allowed(row[1], row[0]):  # row = (project_id, category)
                 return { 'error': 'User does not have permission' }, 400
+            # ...and they must also be allowed to use the NEW target combo, so an
+            # edit can't move an opportunity into a project/category they don't have.
+            if not edit_allowed(category, project_id):
+                return { 'error': 'User does not have permission for the selected project/category' }, 400
             if category not in EXEMPT_CATEGORIES and not combo_exists(cursor, project_id, category):
                 return { 'error': 'Please select an existing project' }, 400
+            # Snapshot the pre-edit state so record_history can store an accurate
+            # field-level diff (don't infer it from neighbouring history rows).
+            before = opportunity_object(id)
             cursor.execute(
                 """UPDATE opportunities
                     SET
@@ -528,7 +580,7 @@ def update(id):
                     'just_show_up': 1 if request.form.get('just_show_up') == 'true' else 0,
                 }
             )
-            record_history(cursor, id, 'update')
+            record_history(cursor, id, 'update', before=before)
     except Exception as e:
         return { 'error': str(e) }, 400
 

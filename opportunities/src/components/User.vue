@@ -1,8 +1,9 @@
 <script setup>
 import axios from 'axios'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 import { DOMAIN } from '../utils.js'
+import { userType } from '../permissions.js'
 
 const props = defineProps({
   user: Object
@@ -10,12 +11,24 @@ const props = defineProps({
 const working = ref(false)
 const passwordResetLink = ref('')
 
+const typeLabel = computed(() => userType(props.user))
 
-async function updateUser(user, privilege) {
+
+async function updateUser(user, privilege, event) {
+  const turningOn = user[privilege] !== 1
+  const label = privilege === 'admin' ? 'admin' : 'coordinator'
+  const ok = confirm(
+    `${turningOn ? 'Grant' : 'Remove'} ${label} ${turningOn ? 'to' : 'from'} ${user.email}?`
+  )
+  if (!ok) {
+    // Revert the checkbox the browser already toggled.
+    if (event && event.target) event.target.checked = user[privilege] === 1
+    return
+  }
   working.value = true
-  user[privilege] = user[privilege] === 1 ? 0 : 1
+  user[privilege] = turningOn ? 1 : 0
   const res = await axios.post(DOMAIN.concat(`/api/users/${user.id}`), {
-    admin: user.admin === 1, 
+    admin: user.admin === 1,
     project_coordinator: user.project_coordinator === 1,
   }, {
     headers: {
@@ -35,22 +48,43 @@ async function getPasswordResetLink() {
 </script>
 
 <template>
-  <br/>
-  <h2 class="user-email">{{ props.user.email }}</h2> 
-  Admin <input
-    type="checkbox"
-    :checked="props.user.admin"
-    :disabled="working"
-    @change="updateUser(props.user, 'admin')" />
-  <br/>
-  Project Coordinator <input
-    type="checkbox"
-    :checked="props.user.project_coordinator" 
-    :disabled="working"
-    @change="updateUser(props.user, 'project_coordinator')"/>
-  <div v-if="passwordResetLink">{{ passwordResetLink }}</div>
-  <div v-else ><button @click.prevent="getPasswordResetLink">Get Password Reset Link</button></div>
+  <tr>
+    <td class="user-email">{{ props.user.email }}</td>
+    <td>{{ typeLabel }}</td>
+    <td>{{ props.user.last_login || '—' }}</td>
+    <td>
+      <ul v-if="props.user.assigned_projects && props.user.assigned_projects.length" class="projects">
+        <li v-for="p in props.user.assigned_projects" :key="p.project_id + '::' + p.category">
+          {{ p.project_id }} — {{ p.name || '(unnamed)' }} — <b>{{ p.category }}</b>
+        </li>
+      </ul>
+      <span v-else class="muted">—</span>
+    </td>
+    <td class="manage">
+      <label>Admin <input
+        type="checkbox"
+        :checked="props.user.admin"
+        :disabled="working"
+        @change="updateUser(props.user, 'admin', $event)" /></label>
+      <label>Coordinator <input
+        type="checkbox"
+        :checked="props.user.project_coordinator"
+        :disabled="working"
+        @change="updateUser(props.user, 'project_coordinator', $event)"/></label>
+      <div v-if="passwordResetLink" class="reset-link">{{ passwordResetLink }}</div>
+      <button v-else @click.prevent="getPasswordResetLink">Get Password Reset Link</button>
+    </td>
+  </tr>
 </template>
 
-<style media="screen">
+<style scoped>
+  .projects {
+    margin: 0;
+    padding-left: 18px;
+    font-size: .9em;
+  }
+  .projects li { margin: 1px 0; }
+  .muted { color: #9ca3af; }
+  .manage label { display: block; white-space: nowrap; }
+  .reset-link { font-size: .8em; word-break: break-all; max-width: 320px; }
 </style>

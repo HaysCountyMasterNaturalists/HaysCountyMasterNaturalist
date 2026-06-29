@@ -1,8 +1,9 @@
 <script setup>
 import axios from 'axios'
 import { ref, computed } from 'vue'
+import { VueFinalModal } from 'vue-final-modal'
 
-import { DOMAIN } from '../utils.js'
+import { AT_CATEGORIES, DOMAIN } from '../utils.js'
 
 const assignments = ref([])   // {id, project_id, category, coordinator_id, email}
 const users = ref([])
@@ -13,32 +14,62 @@ const importSummary = ref(null)
 const importing = ref(false)
 const fileInput = ref(null)
 
-// Add-assignment form
-const addProjectId = ref('')
-const addCategory = ref('')
+const search = ref('')
+
+// Per-row edit dialog
+const showEdit = ref(false)
+const editingCombo = ref(null)
 const addCoordinatorId = ref('')
 
 const coordinators = computed(() =>
   users.value.filter(u => u.project_coordinator || u.admin)
 )
 
-// One row per (project, category) combination — same shape as the dropdown.
-const combos = computed(() =>
-  projects.value.flatMap(p =>
-    (p.categories || []).map(cat => ({
-      project_id: p.project_id,
-      name: p.name,
-      category: cat,
-      stale: p.stale,
-    }))
-  )
-)
-
-// Categories available for the currently-chosen project in the add form.
-const addCategories = computed(() => {
-  const p = projects.value.find(p => p.project_id === addProjectId.value)
-  return p ? p.categories : []
+// Coordinators not already assigned to the row being edited.
+const availableCoordinators = computed(() => {
+  if (!editingCombo.value) return []
+  const assignedIds = new Set(coordsFor(editingCombo.value).map(a => a.coordinator_id))
+  return coordinators.value.filter(c => !assignedIds.has(c.id))
 })
+
+// One row per entry, in the same order as the opportunity dropdown: AT
+// activity types first, then EV, then each project's (project, category)
+// combos. AT and EV are exempt — open to any coordinator, no assignment row.
+const combos = computed(() => {
+  const rows = AT_CATEGORIES.map(at => ({
+    key: `AT::${at}`,
+    label: `AT — ${at}`,
+    exempt: true,
+  }))
+  rows.push({ key: 'EV::', label: 'EV — Event', exempt: true })
+  projects.value.forEach(p =>
+    (p.categories || []).forEach(cat =>
+      rows.push({
+        key: `${p.project_id}::${cat}`,
+        label: `${p.project_id} ${p.name} — ${cat}`,
+        project_id: p.project_id,
+        category: cat,
+        stale: p.stale,
+        exempt: false,
+      })
+    )
+  )
+  return rows
+})
+
+// Rows matching the search box (case-insensitive substring of the label).
+const filteredCombos = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return combos.value
+  return combos.value.filter(c => c.label.toLowerCase().includes(q))
+})
+
+function openEdit(combo) {
+  editingCombo.value = combo
+  addCoordinatorId.value = ''
+  err.value = null
+  showEdit.value = true
+}
 
 function coordsFor(combo) {
   return assignments.value.filter(
@@ -59,9 +90,10 @@ async function fetchAll() {
 
 async function addAssignment() {
   err.value = null
+  if (!editingCombo.value || !addCoordinatorId.value) return
   const res = await axios.post(DOMAIN.concat('/api/assignments'), {
-    project_id: addProjectId.value,
-    category: addCategory.value,
+    project_id: editingCombo.value.project_id,
+    category: editingCombo.value.category,
     coordinator_id: addCoordinatorId.value,
   })
   if (res.data.success) {
@@ -72,8 +104,9 @@ async function addAssignment() {
   }
 }
 
-async function removeAssignment(id) {
-  const res = await axios.post(DOMAIN.concat(`/api/assignments/delete/${id}`))
+async function removeAssignment(assignment) {
+  if (!confirm(`Remove ${assignment.email} as a coordinator for this project/category?`)) return
+  const res = await axios.post(DOMAIN.concat(`/api/assignments/delete/${assignment.id}`))
   if (res.data.success) fetchAll()
   else err.value = res.data.error || 'Could not remove assignment'
 }
@@ -135,40 +168,74 @@ fetchAll()
     </div>
   </div>
 
-  <form class="add-form" @submit.prevent="addAssignment">
-    <select v-model="addProjectId">
-      <option value="" disabled>Project…</option>
-      <option v-for="p in projects" :key="p.project_id" :value="p.project_id">{{ p.project_id }} — {{ p.name }}</option>
-    </select>
-    <select v-model="addCategory" :disabled="!addProjectId">
-      <option value="" disabled>Category…</option>
-      <option v-for="c in addCategories" :key="c" :value="c">{{ c }}</option>
-    </select>
-    <select v-model="addCoordinatorId">
-      <option value="" disabled>Coordinator…</option>
-      <option v-for="c in coordinators" :key="c.id" :value="c.id">{{ c.email }}</option>
-    </select>
-    <button class="vf-btn vf-btn-primary" type="submit"
-      :disabled="!addProjectId || !addCategory || !addCoordinatorId">Add</button>
-  </form>
   <div class="error" v-if="err">{{ err }}</div>
 
+  <div class="search">
+    <input v-model="search" type="search" placeholder="Filter by project name, number or category…" />
+  </div>
+
   <table class="combos">
-    <thead><tr><th>Project — Category</th><th>Coordinators</th><th>Status</th></tr></thead>
+    <thead><tr>
+      <th class="col-name">Project / Activity — Category</th>
+      <th>Coordinators</th>
+      <th>Status</th>
+      <th></th>
+    </tr></thead>
     <tbody>
-      <tr v-for="combo in combos" :key="combo.project_id + '::' + combo.category" :class="{ 'stale-row': combo.stale }">
-        <td>{{ combo.project_id }} {{ combo.name }} — <b>{{ combo.category }}</b></td>
+      <tr v-for="combo in filteredCombos" :key="combo.key" :class="{ 'stale-row': combo.stale }">
+        <td class="col-name">{{ combo.label }}</td>
         <td>
-          <span v-for="a in coordsFor(combo)" :key="a.id" class="chip">
-            {{ a.email }} <button class="chip-x" @click="removeAssignment(a.id)">×</button>
-          </span>
-          <span v-if="!coordsFor(combo).length" class="muted">—</span>
+          <template v-if="combo.exempt">
+            <span class="muted">any coordinator</span>
+          </template>
+          <template v-else>
+            <span v-for="a in coordsFor(combo)" :key="a.id" class="chip">{{ a.email }}</span>
+            <span v-if="!coordsFor(combo).length" class="muted">—</span>
+          </template>
         </td>
-        <td><span v-if="combo.stale" class="badge-stale">⚠ not in latest upload</span></td>
+        <td>
+          <span v-if="combo.exempt" class="badge-ok">always available</span>
+          <span v-else-if="combo.stale" class="badge-stale">⚠ not in latest upload</span>
+          <span v-else class="badge-ok">✓ in latest upload</span>
+        </td>
+        <td class="col-edit">
+          <button v-if="!combo.exempt" class="vf-btn vf-btn-secondary edit-btn" @click="openEdit(combo)">Edit</button>
+        </td>
       </tr>
-      <tr v-if="!combos.length"><td colspan="3"><i>No projects yet — upload the spreadsheet.</i></td></tr>
+      <tr v-if="!filteredCombos.length"><td colspan="4"><i>No rows match “{{ search }}”.</i></td></tr>
     </tbody>
   </table>
+
+  <VueFinalModal v-model="showEdit">
+    <div class="modal-container" @click.self="showEdit = false">
+      <div v-if="editingCombo" class="modal-box">
+        <span class="close" @click="showEdit = false">&times;</span>
+        <h2>Coordinators</h2>
+        <p class="combo-label">{{ editingCombo.label }}</p>
+
+        <ul class="coord-list">
+          <li v-for="a in coordsFor(editingCombo)" :key="a.id">
+            <span>{{ a.email }}</span>
+            <button class="vf-btn vf-btn-secondary remove-btn" @click="removeAssignment(a)">Remove</button>
+          </li>
+          <li v-if="!coordsFor(editingCombo).length" class="muted">No coordinators assigned yet.</li>
+        </ul>
+
+        <form class="add-form" @submit.prevent="addAssignment">
+          <select v-model="addCoordinatorId">
+            <option value="" disabled>Add a coordinator…</option>
+            <option v-for="c in availableCoordinators" :key="c.id" :value="c.id">{{ c.email }}</option>
+          </select>
+          <button class="vf-btn vf-btn-primary" type="submit" :disabled="!addCoordinatorId">Add</button>
+        </form>
+        <div class="error" v-if="err">{{ err }}</div>
+
+        <div class="modal-actions">
+          <button class="vf-btn vf-btn-secondary" @click="showEdit = false">Done</button>
+        </div>
+      </div>
+    </div>
+  </VueFinalModal>
 </template>
 
 <style scoped>
@@ -177,14 +244,41 @@ fetchAll()
   .import label { cursor: pointer; }
   .summary { margin-top: 10px; font-size: .9em; }
   .summary details { display: inline; }
-  .add-form { display: flex; gap: 10px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
-  .add-form select { height: 38px; padding: 0 8px; }
   .error { color: #b91c1c; margin: 8px 0; }
-  .combos { border-collapse: collapse; width: 100%; max-width: 900px; }
+  .search { margin: 12px 0; }
+  .search input { width: 100%; max-width: 420px; height: 36px; padding: 0 10px; box-sizing: border-box; }
+  .combos { border-collapse: collapse; width: 100%; max-width: 1000px; }
   .combos th, .combos td { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; vertical-align: top; }
+  .col-name { min-width: 420px; }
+  .col-edit { text-align: center; white-space: nowrap; }
+  .edit-btn { padding: 2px 12px; }
   .stale-row { background: #fef2f2; }
   .badge-stale { color: #b91c1c; font-weight: 600; font-size: .85em; }
+  .badge-ok { color: #6b7280; font-size: .85em; }
   .chip { display: inline-block; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 1px 8px; margin: 2px; font-size: .85em; }
-  .chip-x { border: none; background: none; cursor: pointer; color: #b91c1c; font-weight: 700; }
   .muted { color: #9ca3af; }
+
+  /* Edit dialog — render our own overlay + box inside the modal slot (scoped
+     styles can't reach vue-final-modal's teleported content wrapper). */
+  .modal-container {
+    position: fixed; inset: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.5); padding: 20px;
+  }
+  .modal-box {
+    position: relative; background: #fff; border-radius: 8px; padding: 20px 24px;
+    width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto;
+  }
+  .close {
+    position: absolute; top: 8px; right: 14px;
+    font-size: 26px; font-weight: bold; color: #aaa; cursor: pointer; line-height: 1;
+  }
+  .close:hover { color: #000; }
+  .combo-label { font-weight: 600; margin-top: 0; }
+  .coord-list { list-style: none; padding: 0; margin: 0 0 16px; }
+  .coord-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid #f1f5f9; }
+  .remove-btn { padding: 1px 10px; font-size: .85em; }
+  .add-form { display: flex; gap: 10px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  .add-form select { height: 38px; padding: 0 8px; flex: 1; min-width: 200px; }
+  .modal-actions { margin-top: 16px; text-align: right; }
 </style>
