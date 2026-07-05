@@ -3,7 +3,7 @@
 Edit rights are permission-based, not ownership-based, and keyed on the exact
 (project, category) combination:
 - admins may edit anything;
-- AT/EV are exempt and editable by any coordinator;
+- AT/EV are admin-only (coordinators cannot edit them);
 - every other opportunity requires the user to be assigned to its specific
   (project_id, category) combo. Being the owner/creator grants nothing.
 """
@@ -28,12 +28,19 @@ def test_coordinator_not_assigned_may_not_edit():
     assert _edit_allowed(False, True, 'RM', '999', [combo_key('410', 'RM')]) is False
 
 
-def test_exempt_categories_editable_by_any_coordinator():
-    assert _edit_allowed(False, True, 'AT', None, []) is True
-    assert _edit_allowed(False, True, 'EV', None, []) is True
+def test_at_ev_are_admin_only():
+    # Chapter policy: AT/EV are admin-only. Coordinators cannot edit them,
+    # even though they're not assignment-gated.
+    assert _edit_allowed(False, True, 'AT', None, []) is False
+    assert _edit_allowed(False, True, 'EV', None, []) is False
 
 
-def test_exempt_category_still_requires_coordinator():
+def test_at_ev_editable_by_admin():
+    assert _edit_allowed(True, False, 'AT', None, []) is True
+    assert _edit_allowed(True, False, 'EV', None, []) is True
+
+
+def test_at_ev_denied_to_non_coordinator():
     assert _edit_allowed(False, False, 'AT', None, []) is False
 
 

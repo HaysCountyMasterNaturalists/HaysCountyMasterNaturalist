@@ -22,12 +22,17 @@ describe('canEditOpportunity', () => {
     expect(canEditOpportunity(coord, { category: 'RM', project_id: '999' })).toBe(false)
   })
 
-  it('AT/EV are editable by any coordinator', () => {
-    expect(canEditOpportunity(coord, { category: 'AT', project_id: 'TMN Tuesday' })).toBe(true)
-    expect(canEditOpportunity(coord, { category: 'EV', project_id: '' })).toBe(true)
+  it('AT/EV are admin-only — coordinators cannot edit them', () => {
+    expect(canEditOpportunity(coord, { category: 'AT', project_id: 'TMN Tuesday' })).toBe(false)
+    expect(canEditOpportunity(coord, { category: 'EV', project_id: '' })).toBe(false)
   })
 
-  it('AT/EV still require coordinator (or admin)', () => {
+  it('AT/EV are editable by admins', () => {
+    expect(canEditOpportunity(admin, { category: 'AT', project_id: 'TMN Tuesday' })).toBe(true)
+    expect(canEditOpportunity(admin, { category: 'EV', project_id: '' })).toBe(true)
+  })
+
+  it('AT/EV denied to a plain user', () => {
     expect(canEditOpportunity(plain, { category: 'AT', project_id: 'x' })).toBe(false)
   })
 
@@ -61,13 +66,14 @@ describe('buildComboItems', () => {
     expect(values).toContain('EV|')
   })
 
-  it('a coordinator only sees AT, EV, and their assigned project combos', () => {
+  it('a coordinator sees only their assigned project combos — no AT/EV', () => {
     const items = buildComboItems(projects, { project_coordinator: 1, assigned_combos: ['410::RM'] })
     const values = items.map(i => i.value)
-    expect(values).toContain('RM|410')      // assigned
-    expect(values).not.toContain('NPA|410') // not assigned
-    expect(values).not.toContain('PO|999')  // not assigned
-    expect(values).toContain('EV|')         // always
+    expect(values).toContain('RM|410')       // assigned
+    expect(values).not.toContain('NPA|410')  // not assigned
+    expect(values).not.toContain('PO|999')   // not assigned
+    expect(values).not.toContain('EV|')                       // AT/EV are admin-only
+    expect(values.some(v => v.startsWith('AT|'))).toBe(false) // AT/EV are admin-only
   })
 
   it('orders AT first, then EV, then project combos', () => {

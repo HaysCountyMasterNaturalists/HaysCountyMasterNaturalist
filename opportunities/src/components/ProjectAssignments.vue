@@ -145,7 +145,7 @@ fetchAll()
   <h1>Project Assignments</h1>
   <p>
     A coordinator can edit any opportunity for a <b>project + category</b> they're assigned to.
-    Admins edit everything; <b>AT</b> and <b>EV</b> are open to any coordinator.
+    Admins edit everything; <b>AT</b> and <b>EV</b> are admin-only.
   </p>
 
   <div class="import">
@@ -186,7 +186,7 @@ fetchAll()
         <td class="col-name">{{ combo.label }}</td>
         <td>
           <template v-if="combo.exempt">
-            <span class="muted">any coordinator</span>
+            <span class="muted">admins only</span>
           </template>
           <template v-else>
             <span v-for="a in coordsFor(combo)" :key="a.id" class="chip">{{ a.email }}</span>

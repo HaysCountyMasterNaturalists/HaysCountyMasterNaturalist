@@ -5,7 +5,7 @@ import { AT_CATEGORIES } from './utils.js'
 
 export const EXEMPT_CATEGORIES = ['AT', 'EV']
 
-// admins edit anything; AT/EV are open to any coordinator; every other
+// admins edit anything; AT/EV are admin-only (coordinators cannot); every other
 // opportunity requires a matching (project, category) assignment. Ownership
 // grants nothing. Accepts either `assigned_combos` or `assignedCombos`.
 export function canEditOpportunity(user, opp) {
@@ -13,21 +13,23 @@ export function canEditOpportunity(user, opp) {
   if (user.admin) return true
   const isCoordinator = !!(user.project_coordinator || user.coordinator)
   if (!isCoordinator) return false
-  if (EXEMPT_CATEGORIES.includes(opp.category)) return true
+  if (EXEMPT_CATEGORIES.includes(opp.category)) return false  // AT/EV are admin-only
   const combos = user.assigned_combos || user.assignedCombos || []
   return combos.includes(`${opp.project_id}::${opp.category}`)
 }
 
-// The "Project / Activity" dropdown options, in the order the backend expects:
-// AT activity types first, then EV, then project (project, category) combos.
-// AT/EV are open to any coordinator; admins see every project combo; a non-admin
-// coordinator only sees the combos they're assigned to, so the form never
-// offers an option the backend would reject.
+// The "Project / Activity" dropdown options, in the order the backend expects.
+// Admins see everything: AT activity types first, then EV, then every project
+// (project, category) combo. AT/EV are admin-only, so a non-admin coordinator
+// sees only the project combos they're assigned to — the form never offers an
+// option the backend would reject.
 export function buildComboItems(projects, user) {
   const items = []
-  AT_CATEGORIES.forEach(at => items.push({ value: `AT|${at}`, label: `AT — ${at}` }))
-  items.push({ value: 'EV|', label: 'EV — Event' })
   const isAdmin = !!(user && user.admin)
+  if (isAdmin) {
+    AT_CATEGORIES.forEach(at => items.push({ value: `AT|${at}`, label: `AT — ${at}` }))
+    items.push({ value: 'EV|', label: 'EV — Event' })
+  }
   const assigned = new Set((user && user.assigned_combos) || [])
   ;(projects || []).forEach(p => {
     (p.categories || []).forEach(cat => {

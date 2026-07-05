@@ -294,9 +294,10 @@ def convert_to_readable_local(dt):
     return utc.localize(dt).astimezone(central).strftime('%Y-%m-%d %H:%M') if dt else None
 
 
-# Categories that don't use a project_id (AT = Advanced Training,
-# EV = Event): exempt from project selection and assignment-based editing —
-# any editor (admin or project_coordinator) may create/edit them.
+# Categories that don't use a project_id (AT = Advanced Training, EV = Event):
+# exempt from the "must be a known project" registry check. Per chapter policy
+# they are ADMIN-ONLY to create/edit (coordinators cannot), so they are not
+# assignment-gated the way project categories are.
 EXEMPT_CATEGORIES = ('AT', 'EV')
 
 
@@ -343,7 +344,7 @@ def diff_snapshots(before, after):
 def _edit_allowed(is_admin, is_coordinator, category, project_id, assigned_combos):
     '''Pure permission rule (no DB), so it's unit-testable:
     - admins may edit anything;
-    - exempt categories (AT/EV) are editable by any coordinator;
+    - AT/EV are admin-only (chapter policy) — coordinators cannot edit them;
     - otherwise the user must be assigned to the opportunity's exact
       (project, category) combination.
     Ownership alone grants nothing, and a revoked coordinator with leftover
@@ -353,7 +354,7 @@ def _edit_allowed(is_admin, is_coordinator, category, project_id, assigned_combo
     if not is_coordinator:
         return False
     if category in EXEMPT_CATEGORIES:
-        return True
+        return False  # AT/EV are admin-only
     return combo_key(project_id, category) in (assigned_combos or [])
 
 
