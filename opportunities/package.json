@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "playwright test",
-    "test:ui": "playwright test --ui"
+    "test:ui": "playwright test --ui",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@vueform/vueform": "^1.13.7",
@@ -21,6 +22,7 @@
     "@axe-core/playwright": "^4.8.4",
     "@playwright/test": "^1.41.0",
     "@vitejs/plugin-vue": "^4.5.2",
-    "vite": "^5.0.10"
+    "vite": "^5.0.10",
+    "vitest": "^4.1.9"
   }
 }

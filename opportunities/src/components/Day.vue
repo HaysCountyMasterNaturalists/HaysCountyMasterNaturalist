@@ -2,19 +2,23 @@
 import { ref, computed } from 'vue'
 
 import { getCategory, formatDateDisplay } from '../utils.js'
+import { canEditOpportunity } from '../permissions.js'
 
 
 const props = defineProps({
   opps: Array,
-  userId: Number,
   admin: Boolean,
+  coordinator: Boolean,
+  assignedCombos: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['modalOpp'])
 
-
-function isEditor(admin, userId, opp) {
-  return admin || opp.owner === userId
+function canEdit(opp) {
+  return canEditOpportunity(
+    { admin: props.admin, project_coordinator: props.coordinator, assigned_combos: props.assignedCombos },
+    opp
+  )
 }
 
 function openModal(opp) {
@@ -26,7 +30,7 @@ function openModal(opp) {
 <template>
   <div class="opp-list">
     <div class="opp-wrapper" v-for="opp in opps" @click="openModal(opp)">
-      <div v-if="isEditor(admin, userId, opp)" style="text-align: right;">
+      <div v-if="canEdit(opp)" style="text-align: right;">
         <RouterLink class="hover-show vf-btn vf-btn-primary" :to="`/${opp.id}`">Edit</RouterLink>
       </div>
       <h2>{{ opp.title }}</h2>

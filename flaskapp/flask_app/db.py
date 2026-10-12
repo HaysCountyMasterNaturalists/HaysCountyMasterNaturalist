@@ -41,7 +41,8 @@ def init_db():
                       email VARCHAR (255) UNIQUE NOT NULL,
                       password LONGBLOB NOT NULL,
                       admin TINYINT(1) DEFAULT 0,
-                      project_coordinator TINYINT(1) DEFAULT 0
+                      project_coordinator TINYINT(1) DEFAULT 0,
+                      last_login DATETIME
                 );"""
             )
             cursor.execute(
@@ -49,6 +50,7 @@ def init_db():
                       id INT AUTO_INCREMENT PRIMARY KEY,
                       created DATETIME DEFAULT CURRENT_TIMESTAMP,
                       owner INT,
+                      updated_by INT,
                       title VARCHAR (150) NOT NULL,
                       body LONGTEXT NOT NULL,
                       anywhere TINYINT(1) DEFAULT 0,
@@ -67,6 +69,37 @@ def init_db():
                       just_show_up TINYINT(1) DEFAULT 0,
                       CONSTRAINT fk_category FOREIGN KEY (owner)
                                              REFERENCES master_naturalist(id)
+                );"""
+            )
+            cursor.execute(
+                """CREATE TABLE projects (
+                      project_id VARCHAR (50) PRIMARY KEY,
+                      name VARCHAR (255),
+                      categories VARCHAR (100),
+                      last_imported DATETIME
+                );"""
+            )
+            cursor.execute(
+                """CREATE TABLE coordinator_assignments (
+                      id INT AUTO_INCREMENT PRIMARY KEY,
+                      project_id VARCHAR (50) NOT NULL,
+                      category VARCHAR (50) NOT NULL,
+                      coordinator_id INT NOT NULL,
+                      created DATETIME DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE KEY uq_combo_coordinator (project_id, category, coordinator_id),
+                      CONSTRAINT fk_ca_coordinator FOREIGN KEY (coordinator_id)
+                                             REFERENCES master_naturalist(id)
+                );"""
+            )
+            cursor.execute(
+                """CREATE TABLE opportunity_history (
+                      id INT AUTO_INCREMENT PRIMARY KEY,
+                      opportunity_id INT,
+                      action VARCHAR (10),
+                      changed_by INT,
+                      changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                      snapshot JSON,
+                      changes JSON
                 );"""
             )
         close_db()

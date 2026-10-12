@@ -6,6 +6,20 @@
 
 This runbook was reconstructed and verified end-to-end on 2026-05-17 after the previous (manual-deploy) maintainer left.
 
+## Infrastructure & ops — see the `calendar_infra` repo
+
+The **systemd `cal-test` / `cal-prod` server is provisioned and documented separately** in
+[HaysCountyMasterNaturalists/calendar_infra](https://github.com/HaysCountyMasterNaturalists/calendar_infra)
+(Terraform). That repo's README is the source of truth for hosting and ops. Quick reference:
+
+- **Host:** one **Hetzner Cloud CX22 VPS** running both environments. IP is a Hetzner floating IP (`terraform output -raw floating_ip`), stored as this repo's `SERVER_HOST` Actions secret; SSH key is `SSH_PRIVATE_KEY`.
+- **Routing:** Caddy (auto TLS) → `calendar.haysmn.org` → gunicorn **:5000** (`cal-prod`, `/opt/cal-prod`); `test-calendar.haysmn.org` → gunicorn **:5001** (`cal-test`, `/opt/cal-test`).
+- **DBs (local only; 3306 not exposed):** `cal_prod` / `cal_prod_user`, `cal_test` / `cal_test_user`. Connect remotely via SSH tunnel: `ssh -L 3307:localhost:3306 root@<ip>` then `mysql -h127.0.0.1 -P3307 -u cal_test_user -p cal_test`.
+- **SSH:** `ssh -i ~/.ssh/hcmn_cal_deploy root@<floating_ip>`.
+- **DB ops (manual GitHub Actions in `calendar_infra`):** *List Backups*, *Backup Database*, **Reset Test Database** (copies `cal_prod` → `cal_test`, then restarts cal-test — re-run `migrate.sh` afterward if the app schema is ahead of prod), *Restore Backup* (`CONFIRM` required for prod). Nightly backups run via cron → Google Drive / S3.
+- **Note:** `calendar_infra/docs/app-repo-deploy-setup.md` is an idealized setup guide and is out of date with this repo's actual `deploy.yml` (factory app, SQLAlchemy strings, different secret names, test←dev). Trust `.github/workflows/deploy.yml` for current behavior.
+- **Web-app login** is the app's own email/password against that environment's `master_naturalist` table (separate per env) — there are no shared/committed credentials.
+
 ## Production environment
 
 | Thing | Value |
